@@ -1,50 +1,210 @@
 {
   "tasks": [
     {
-      "id": 1,
-      "title": "태스크1 토요일",
+      "id": 9,
+      "title": "클로드 세팅 + 사용법 온보딩",
       "memo": null,
       "category": null,
-      "project_id": 1,
+      "project_id": 7,
+      "priority": "high",
+      "status": "done",
+      "due_date": "2026-05-21",
+      "created_at": "2026-05-18T01:07:28.655Z",
+      "updated_at": "2026-05-21T05:56:39.876Z"
+    },
+    {
+      "id": 11,
+      "title": "라이브 커머스 준비 ",
+      "memo": null,
+      "category": null,
+      "project_id": null,
       "priority": "medium",
       "status": "todo",
-      "due_date": "2026-05-16",
-      "created_at": "2026-05-16T02:47:22.162Z",
-      "updated_at": "2026-05-16T02:47:22.162Z"
+      "due_date": "2026-05-22",
+      "created_at": "2026-05-18T03:04:05.813Z",
+      "updated_at": "2026-05-18T03:04:05.813Z"
+    },
+    {
+      "id": 12,
+      "title": "배너 만들기 ",
+      "memo": "메인홈배너/팝업\n전면배너/인터랙티브\n메인홈테마/CTA\nCRM\n인스타그램 피드",
+      "category": null,
+      "project_id": null,
+      "priority": "medium",
+      "status": "done",
+      "due_date": "2026-05-18",
+      "created_at": "2026-05-18T05:24:20.630Z",
+      "updated_at": "2026-05-18T10:22:49.760Z"
+    },
+    {
+      "id": 13,
+      "title": "상품 스터디 + 상세페 만들기",
+      "memo": "아래 상품 스터디 (어떤 카테고리의 상품이고, 어디를 가는 상품인지 + 후기 참고)\n3443152\n3851286\n3544960\n3886242\n5885372 (이미 상세페 제작 완료)",
+      "category": null,
+      "project_id": 1,
+      "priority": "high",
+      "status": "done",
+      "due_date": "2026-05-19",
+      "created_at": "2026-05-19T01:18:00.542Z",
+      "updated_at": "2026-05-19T07:41:58.438Z"
+    },
+    {
+      "id": 14,
+      "title": "세미팩 현황분석",
+      "memo": "1) 왜 UV 개선이 먼저가 아닌 CVR이 먼저인지 명분 파악\n- 현재 2030 주평균 유입은 700명으로 세미패키지 카테고리 치고는 유입이 잘 잡혀있는 상태\n- 그래도 추가로 더 잡을 수 있는 채널이 있다면 해당 부분도 파악 필요\n\n2. 샌프란시스코에는 세미패키지가 총 2가지 있습니다. (2030 전용 & 가족 전용)\n두 상품의 타겟 고객군이 명백히 다르기 때문에 당연히 마케팅 채널도 마케팅 메시지도 다르게 가져가야 합니다.\n그럼 어떤 상품에 집중했을 때 더 큰 임팩트를 낼 수 있는지 파악이 우선\n미국에는 2030이 더 많이 가나? 가족이 더 많이 가나?\n가족이 많이 간다라고 하면 세미패키지에 대한 니즈가 있나?\n이미 마리트의 데모가 2030 중심이다보니, 더 쉽게 타겟하는게 2030이려나? 등등",
+      "category": null,
+      "project_id": null,
+      "priority": "medium",
+      "status": "done",
+      "due_date": "2026-05-19",
+      "created_at": "2026-05-19T01:20:15.233Z",
+      "updated_at": "2026-05-21T01:45:12.042Z"
+    },
+    {
+      "id": 15,
+      "title": "프로모션 성공 사례 스터디",
+      "memo": null,
+      "category": null,
+      "project_id": 3,
+      "priority": "medium",
+      "status": "in_progress",
+      "due_date": "2026-05-29",
+      "created_at": "2026-05-21T01:45:57.670Z",
+      "updated_at": "2026-05-22T04:36:18.053Z"
+    },
+    {
+      "id": 16,
+      "title": "미구매자 대상 설문지 수정 및 요청",
+      "memo": null,
+      "category": null,
+      "project_id": 3,
+      "priority": "high",
+      "status": "done",
+      "due_date": "2026-05-21",
+      "created_at": "2026-05-21T05:56:36.082Z",
+      "updated_at": "2026-05-21T05:57:14.715Z"
+    },
+    {
+      "id": 17,
+      "title": "프로모션 페이지 초안작성 후 지희님께 워싱부탁",
+      "memo": null,
+      "category": null,
+      "project_id": 3,
+      "priority": "high",
+      "status": "done",
+      "due_date": "2026-05-21",
+      "created_at": "2026-05-21T05:56:53.829Z",
+      "updated_at": "2026-05-22T04:35:51.037Z"
+    },
+    {
+      "id": 18,
+      "title": "플레이리스트 셋업 진행",
+      "memo": null,
+      "category": null,
+      "project_id": 3,
+      "priority": "low",
+      "status": "done",
+      "due_date": "2026-05-21",
+      "created_at": "2026-05-21T05:57:03.900Z",
+      "updated_at": "2026-05-22T04:36:22.785Z"
+    },
+    {
+      "id": 19,
+      "title": "인스타그램 카드뉴스 제작",
+      "memo": null,
+      "category": null,
+      "project_id": 8,
+      "priority": "medium",
+      "status": "todo",
+      "due_date": "2026-05-22",
+      "created_at": "2026-05-22T04:38:49.414Z",
+      "updated_at": "2026-05-22T04:38:49.414Z"
+    },
+    {
+      "id": 20,
+      "title": "펀티 강의 수강",
+      "memo": null,
+      "category": null,
+      "project_id": 7,
+      "priority": "medium",
+      "status": "done",
+      "due_date": "2026-05-22",
+      "created_at": "2026-05-22T04:39:04.857Z",
+      "updated_at": "2026-05-22T09:01:16.911Z"
+    },
+    {
+      "id": 21,
+      "title": "이슈보고_배너노출",
+      "memo": "배너가 노출이 안되고 있음. 대희님께 받은 쿼리 돌려서 경현님께 공유드리기",
+      "category": null,
+      "project_id": null,
+      "priority": "medium",
+      "status": "done",
+      "due_date": "2026-05-26",
+      "created_at": "2026-05-22T06:02:04.739Z",
+      "updated_at": "2026-05-26T01:58:02.620Z"
+    },
+    {
+      "id": 22,
+      "title": "유튜브 캡션 전달",
+      "memo": null,
+      "category": null,
+      "project_id": 3,
+      "priority": "medium",
+      "status": "todo",
+      "due_date": "2026-05-26",
+      "created_at": "2026-05-26T01:53:31.453Z",
+      "updated_at": "2026-05-26T01:53:31.453Z"
     }
   ],
   "projects": [
     {
       "id": 1,
-      "name": "샌프란시스코 도시관리",
-      "color": "#6f6af8",
+      "name": "샌프란시스코 프로모션 고도화",
+      "color": "#f06060",
       "created_at": "2026-05-16T02:41:33.568Z"
     },
     {
-      "id": 2,
-      "name": "시애틀 도시개발",
-      "color": "#4ecca3",
-      "created_at": "2026-05-16T02:41:33.569Z",
-      "archived": true,
-      "archived_at": "2026-05-16T02:47:29.923Z"
+      "id": 3,
+      "name": "세미팩 CVR 개선",
+      "color": "#a3e635",
+      "created_at": "2026-05-16T02:41:33.569Z"
     },
     {
-      "id": 3,
-      "name": "신규 수요 발굴",
-      "color": "#f7c843",
-      "created_at": "2026-05-16T02:41:33.569Z"
+      "id": 7,
+      "name": "업무 세팅",
+      "color": "#4ecca3",
+      "created_at": "2026-05-18T01:07:02.577Z"
+    },
+    {
+      "id": 8,
+      "name": "세미팩 전환률 높이기(CGMV 확대)",
+      "color": "#6f6af8",
+      "created_at": "2026-05-18T02:22:51.036Z"
     }
   ],
   "settings": {
-    "mail_to": "",
-    "mail_from": "",
+    "mail_to": "jaewon.han@myrealtrip.com",
+    "mail_from": "jaewon.han@myrealtrip.com",
     "mail_time": "08:00",
     "openai_api_key": "",
     "gmail_app_password": "",
-    "okr_data": "{\"2026-05\":[{\"text\":\"신규 수요 리포트 발행\",\"done\":false}]}"
+    "okr_data": "{\"2026-05\":[{\"text\":\"샌프, 시카고, 시애틀 도시이해 뿌시기\",\"done\":false}]}"
   },
   "_seq": {
-    "tasks": 1,
-    "projects": 3
-  }
+    "tasks": 22,
+    "projects": 8,
+    "events": 2
+  },
+  "events": [
+    {
+      "id": 2,
+      "title": "라이브커머스 진행 20시",
+      "start_date": "2026-06-18",
+      "end_date": "2026-06-18",
+      "color": "#4ecca3",
+      "memo": null,
+      "created_at": "2026-05-26T06:12:29.536Z"
+    }
+  ]
 }

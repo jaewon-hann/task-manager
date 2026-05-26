@@ -5,6 +5,7 @@ import Projects from './pages/Projects.jsx';
 import Settings from './pages/Settings.jsx';
 import CalendarView from './pages/CalendarView.jsx';
 import WeeklyView from './pages/WeeklyView.jsx';
+import MonthView from './pages/MonthView.jsx';
 
 const NAV = [
   { id: 'dashboard', label: '대시보드',   icon: '▦' },
@@ -57,7 +58,7 @@ export default function App() {
       case 'tasks':     return <TaskList filter="all"   params={pageParams} />;
       case 'today':     return <TaskList filter="today" params={pageParams} />;
       case 'week':      return <WeeklyView />;
-      case 'month':     return <TaskList filter="month" params={pageParams} />;
+      case 'month':     return <MonthView />;
       case 'archive':   return <TaskList filter="archive" params={pageParams} />;
       case 'calendar':  return <CalendarView />;
       case 'projects':  return <Projects />;

@@ -2,6 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 
 const COLORS = ['#6f6af8','#4ecca3','#f7c843','#f06060','#e879f9','#38bdf8','#fb923c','#a3e635'];
+const PRIORITY_COLOR = { high: '#f06060', medium: '#f7c843', low: '#4ecca3' };
+const STATUS_LABEL   = { todo: '할 일', in_progress: '진행 중', done: '완료' };
+const STATUS_STYLE   = {
+  todo:        { bg: 'var(--surface2)',        color: 'var(--text3)' },
+  in_progress: { bg: 'rgba(111,106,248,0.15)', color: 'var(--accent)' },
+};
 
 function CompleteModal({ project, onConfirm, onCancel }) {
   const [choice, setChoice] = useState('all');
@@ -13,7 +19,6 @@ function CompleteModal({ project, onConfirm, onCancel }) {
           <span style={{ color: 'var(--accent)', fontWeight: '700' }}>{project.name}</span> 프로젝트를 완료 처리합니다.<br />
           {project.task_count > 0 && `진행 중인 업무 ${project.task_count}건이 있습니다.`}
         </div>
-
         {project.task_count > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '24px' }}>
             {[
@@ -28,7 +33,6 @@ function CompleteModal({ project, onConfirm, onCancel }) {
             ))}
           </div>
         )}
-
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
           <button onClick={onCancel} style={{ padding: '9px 20px', borderRadius: '6px', border: '1px solid var(--border2)', background: 'transparent', color: 'var(--text2)', fontSize: '13px', cursor: 'pointer' }}>취소</button>
           <button onClick={() => onConfirm(choice)} style={{ padding: '9px 20px', borderRadius: '6px', border: 'none', background: '#4ecca3', color: '#fff', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>완료 처리</button>
@@ -46,6 +50,8 @@ export default function Projects() {
   const [loading, setLoading]           = useState(true);
   const [showArchived, setShowArchived] = useState(false);
   const [completeTarget, setCompleteTarget] = useState(null);
+  const [expandedProject, setExpandedProject] = useState(null);
+  const [projectTasks, setProjectTasks] = useState({});
 
   const load = async () => {
     setLoading(true);
@@ -56,6 +62,15 @@ export default function Projects() {
   };
 
   useEffect(() => { load(); }, []);
+
+  const handleProjectClick = async (projectId) => {
+    if (expandedProject === projectId) { setExpandedProject(null); return; }
+    setExpandedProject(projectId);
+    if (!projectTasks[projectId]) {
+      const tasks = await api.tasks.list(`?project_id=${projectId}&exclude_done=1`);
+      setProjectTasks(pt => ({ ...pt, [projectId]: tasks }));
+    }
+  };
 
   const handleCreate = async () => {
     if (!form.name.trim()) return;
@@ -79,9 +94,7 @@ export default function Projects() {
   const handleComplete = async (choice) => {
     const p = completeTarget;
     await api.projects.update(p.id, { name: p.name, color: p.color, archived: true, archived_at: new Date().toISOString() });
-    if (choice === 'all') {
-      await api.projects.completeTasks(p.id);
-    }
+    if (choice === 'all') await api.projects.completeTasks(p.id);
     setCompleteTarget(null);
     load();
   };
@@ -91,12 +104,14 @@ export default function Projects() {
     load();
   };
 
-  const inputStyle = {
-    padding: '9px 12px', borderRadius: '6px',
-    border: '1px solid var(--border2)', background: 'var(--surface2)',
-    color: 'var(--text)', fontSize: '13px',
+  const handleStatusChange = async (task, status) => {
+    await api.tasks.update(task.id, { ...task, status });
+    const tasks = await api.tasks.list(`?project_id=${task.project_id}&exclude_done=1`);
+    setProjectTasks(pt => ({ ...pt, [task.project_id]: tasks }));
+    load();
   };
 
+  const inputStyle = { padding: '9px 12px', borderRadius: '6px', border: '1px solid var(--border2)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '13px' };
   const btnStyle = (variant) => ({
     padding: '6px 14px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer',
     ...(variant === 'done'    ? { background: 'rgba(78,204,163,0.12)', border: '1px solid rgba(78,204,163,0.3)', color: '#4ecca3' } :
@@ -135,9 +150,9 @@ export default function Projects() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '24px' }}>
               {projects.length === 0 && <div style={{ color: 'var(--text3)', fontSize: '13px', padding: '20px 0' }}>진행 중인 프로젝트가 없습니다</div>}
               {projects.map(p => (
-                <div key={p.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div key={p.id} style={{ background: 'var(--surface)', border: `1px solid ${expandedProject === p.id ? 'rgba(111,106,248,0.3)' : 'var(--border)'}`, borderRadius: '10px', overflow: 'hidden' }}>
                   {editing === p.id ? (
-                    <>
+                    <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
                       <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                       <input style={{ ...inputStyle, flex: 1 }} defaultValue={p.name}
                         onChange={e => setProjects(ps => ps.map(x => x.id === p.id ? { ...x, name: e.target.value } : x))} />
@@ -149,17 +164,57 @@ export default function Projects() {
                       </div>
                       <button onClick={() => handleUpdate(p)} style={{ padding: '6px 14px', borderRadius: '6px', background: 'var(--accent)', color: '#fff', border: 'none', fontSize: '12px', cursor: 'pointer' }}>저장</button>
                       <button onClick={() => setEditing(null)} style={{ padding: '6px 14px', borderRadius: '6px', background: 'var(--surface2)', border: '1px solid var(--border2)', color: 'var(--text2)', fontSize: '12px', cursor: 'pointer' }}>취소</button>
-                    </>
+                    </div>
                   ) : (
                     <>
-                      <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: p.color, flexShrink: 0 }} />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '14px', fontWeight: '500' }}>{p.name}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>진행 중 업무 {p.task_count}건</div>
+                      {/* 프로젝트 헤더 - 클릭 시 업무 토글 */}
+                      <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px', cursor: 'pointer' }}
+                        onClick={() => handleProjectClick(p.id)}>
+                        <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: '14px', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {p.name}
+                            <span style={{ fontSize: '11px', color: 'var(--text3)' }}>{expandedProject === p.id ? '▼' : '▶'}</span>
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>진행 중 업무 {p.task_count}건</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }} onClick={e => e.stopPropagation()}>
+                          <button onClick={() => setCompleteTarget(p)} style={btnStyle('done')}>완료</button>
+                          <button onClick={() => setEditing(p.id)} style={btnStyle('edit')}>수정</button>
+                          <button onClick={() => handleDelete(p.id)} style={btnStyle('delete')}>삭제</button>
+                        </div>
                       </div>
-                      <button onClick={() => setCompleteTarget(p)} style={btnStyle('done')}>완료</button>
-                      <button onClick={() => setEditing(p.id)} style={btnStyle('edit')}>수정</button>
-                      <button onClick={() => handleDelete(p.id)} style={btnStyle('delete')}>삭제</button>
+
+                      {/* 업무 목록 */}
+                      {expandedProject === p.id && (
+                        <div style={{ borderTop: '1px solid var(--border)' }}>
+                          {!projectTasks[p.id] ? (
+                            <div style={{ padding: '14px 20px', color: 'var(--text3)', fontSize: '13px' }}>로딩 중...</div>
+                          ) : projectTasks[p.id].length === 0 ? (
+                            <div style={{ padding: '14px 20px', color: 'var(--text3)', fontSize: '13px' }}>진행 중인 업무가 없습니다</div>
+                          ) : projectTasks[p.id].map(task => {
+                            const ss = STATUS_STYLE[task.status] || STATUS_STYLE.todo;
+                            return (
+                              <div key={task.id} style={{ padding: '11px 20px 11px 46px', display: 'flex', alignItems: 'center', gap: '12px', borderBottom: '1px solid var(--border)' }}>
+                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: PRIORITY_COLOR[task.priority], flexShrink: 0 }} />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: '13px', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.title}</div>
+                                  <div style={{ display: 'flex', gap: '8px', marginTop: '3px' }}>
+                                    {task.due_date && <span style={{ fontSize: '11px', color: task.due_date < new Date().toISOString().slice(0,10) ? 'var(--danger)' : 'var(--text3)', fontFamily: 'var(--mono)' }}>📅 {task.due_date}</span>}
+                                    {task.category && <span style={{ fontSize: '11px', color: 'var(--text3)' }}>🏷 {task.category}</span>}
+                                  </div>
+                                </div>
+                                <select value={task.status} onChange={e => handleStatusChange(task, e.target.value)}
+                                  style={{ padding: '3px 8px', borderRadius: '20px', border: 'none', background: ss.bg, color: ss.color, fontSize: '11px', fontFamily: 'var(--sans)', cursor: 'pointer' }}>
+                                  <option value="todo">할 일</option>
+                                  <option value="in_progress">진행 중</option>
+                                  <option value="done">완료</option>
+                                </select>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -200,3 +255,4 @@ export default function Projects() {
     </div>
   );
 }
+

@@ -1,9 +1,8 @@
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const nodemailer = require('nodemailer');
-const { load } = require('../server/db');
+const { query } = require('../server/db');
 
-async function buildTDLContent() {
-  const data = load();
+async function buildTDLContent(userId) {
   const today = new Date().toISOString().slice(0, 10);
 
   const now = new Date();
@@ -14,25 +13,32 @@ async function buildTDLContent() {
   const mon = monday.toISOString().slice(0, 10);
   const sun = sunday.toISOString().slice(0, 10);
 
-  const withProject = t => ({
-    ...t,
-    project_name: data.projects.find(p => p.id === t.project_id)?.name || null,
-  });
+  const [todayRes, weekRes, overdueRes] = await Promise.all([
+    query(`
+      SELECT t.*, p.name AS project_name FROM tasks t
+      LEFT JOIN projects p ON p.id = t.project_id
+      WHERE t.user_id=$1 AND t.status != 'done'
+        AND (t.due_date IS NULL OR t.due_date = $2)
+      ORDER BY CASE t.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END
+    `, [userId, today]),
+    query(`
+      SELECT t.*, p.name AS project_name FROM tasks t
+      LEFT JOIN projects p ON p.id = t.project_id
+      WHERE t.user_id=$1 AND t.status != 'done'
+        AND t.due_date >= $2 AND t.due_date <= $3
+      ORDER BY t.due_date ASC
+    `, [userId, mon, sun]),
+    query(`
+      SELECT t.*, p.name AS project_name FROM tasks t
+      LEFT JOIN projects p ON p.id = t.project_id
+      WHERE t.user_id=$1 AND t.status != 'done' AND t.due_date < $2
+      ORDER BY t.due_date ASC
+    `, [userId, today]),
+  ]);
 
-  const todayTasks = data.tasks
-    .filter(t => t.status !== 'done' && (!t.due_date || t.due_date === today))
-    .map(withProject)
-    .sort((a, b) => ({ high:1, medium:2, low:3 }[a.priority]||2) - ({ high:1, medium:2, low:3 }[b.priority]||2));
-
-  const weekTasks = data.tasks
-    .filter(t => t.status !== 'done' && t.due_date && t.due_date >= mon && t.due_date <= sun)
-    .map(withProject)
-    .sort((a, b) => (a.due_date||'z').localeCompare(b.due_date||'z'));
-
-  const overdue = data.tasks
-    .filter(t => t.status !== 'done' && t.due_date && t.due_date < today)
-    .map(withProject)
-    .sort((a, b) => (a.due_date||'').localeCompare(b.due_date||''));
+  const todayTasks  = todayRes.rows;
+  const weekTasks   = weekRes.rows;
+  const overdue     = overdueRes.rows;
 
   const priorityLabel = { high: '높음', medium: '중간', low: '낮음' };
   const taskToText = t =>
@@ -52,7 +58,7 @@ ${weekTasks.length ? weekTasks.map(taskToText).join('\n') : '없음'}
 ${overdue.length ? overdue.map(taskToText).join('\n') : '없음'}
 
 요청사항:
-1. 반드시 HTML 코드만 반환하세요. 설명, 마크다운, 코드블록(\`\`\`) 없이 <html>태그부터 시작하세요.
+1. 반드시 HTML 코드만 반환하세요. 설명, 마크다운, 코드블록 없이 <html>태그부터 시작하세요.
 2. 인라인 스타일만 사용하세요 (이메일 클라이언트 호환).
 3. 오늘 할 일을 가장 상단에 강조해서 보여주세요.
 4. 각 업무에 대해 한 줄 코멘트나 팁을 간결하게 추가해 주세요.
@@ -61,9 +67,8 @@ ${overdue.length ? overdue.map(taskToText).join('\n') : '없음'}
 7. 전체적으로 깔끔하고 읽기 쉬운 스타일로 만들어 주세요.
 8. HTML 코드 외에 어떤 텍스트도 포함하지 마세요.`;
 
-  // OpenAI API 호출
-  const openaiKey = data.settings?.openai_api_key || process.env.OPENAI_API_KEY;
-  if (!openaiKey) throw new Error('OpenAI API Key가 없습니다. 설정 화면에서 입력해 주세요.');
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!openaiKey) throw new Error('OPENAI_API_KEY 환경변수가 없습니다.');
 
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -75,57 +80,68 @@ ${overdue.length ? overdue.map(taskToText).join('\n') : '없음'}
       model: 'gpt-4o-mini',
       max_tokens: 2000,
       messages: [
-        { role: 'system', content: 'You are an email generator. You must return only valid HTML code, nothing else. No markdown, no code blocks, no explanations. Start directly with <!DOCTYPE html> or <html>.' },
+        { role: 'system', content: 'You are an email generator. Return only valid HTML code, nothing else.' },
         { role: 'user', content: prompt },
       ],
     }),
   });
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`OpenAI API 오류: ${err}`);
-  }
+  if (!res.ok) throw new Error(`OpenAI API 오류: ${await res.text()}`);
 
   const json = await res.json();
   let html = json.choices[0].message.content;
-
-  // 혹시 코드블록이 포함됐을 경우 제거
   html = html.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
-
   return html;
 }
 
-async function sendMail(htmlContent) {
-  const data = load();
-  const settings = data.settings || {};
+async function sendMailToUser(user, htmlContent) {
+  const settingsRes = await query('SELECT * FROM settings WHERE user_id=$1', [user.id]);
+  const settings = settingsRes.rows[0] || {};
 
-  if (!settings.mail_to || !settings.mail_from) {
-    throw new Error('메일 설정이 없습니다. 웹 UI 설정 화면에서 이메일을 입력해 주세요.');
+  const mailTo   = settings.mail_to   || user.email;
+  const mailFrom = settings.mail_from || process.env.GMAIL_FROM;
+
+  if (!mailTo || !mailFrom) {
+    console.log(`⏭ ${user.name}: 메일 설정 없음, 건너뜀`);
+    return;
   }
 
   const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
-      user: settings.mail_from,
-      pass: settings.gmail_app_password || process.env.GMAIL_APP_PASSWORD,
+      user: mailFrom,
+      pass: process.env.GMAIL_APP_PASSWORD,
     },
   });
 
-  const today = new Date().toISOString().slice(0, 10);
+  const todayStr = new Date().toISOString().slice(0, 10);
   await transporter.sendMail({
-    from: settings.mail_from,
-    to: settings.mail_to,
-    subject: `[TDL] ${today} 오늘의 업무 현황`,
+    from: mailFrom,
+    to: mailTo,
+    subject: `[TDL] ${todayStr} ${user.name}님의 오늘 업무`,
     html: htmlContent,
   });
-
-  console.log(`✅ TDL 메일 발송 완료 → ${settings.mail_to}`);
+  console.log(`✅ ${user.name} → ${mailTo} 발송 완료`);
 }
 
 async function main() {
-  console.log('📋 TDL 생성 중...');
-  const html = await buildTDLContent();
-  await sendMail(html);
+  console.log('📋 전체 팀원 TDL 생성 중...');
+  const usersRes = await query(
+    `SELECT u.* FROM users u WHERE u.is_active = true`,
+    []
+  );
+
+  for (const user of usersRes.rows) {
+    try {
+      console.log(`\n👤 ${user.name} 처리 중...`);
+      const html = await buildTDLContent(user.id);
+      await sendMailToUser(user, html);
+    } catch (e) {
+      console.error(`❌ ${user.name} 실패:`, e.message);
+    }
+  }
+  console.log('\n✅ 전체 발송 완료');
+  process.exit(0);
 }
 
 main().catch(err => {

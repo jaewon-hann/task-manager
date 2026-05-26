@@ -29,6 +29,12 @@ export const api = {
     completeTasks: (id)    => apiFetch(`/projects/${id}/complete-tasks`, { method: 'POST' }),
   },
   stats:    () => apiFetch('/stats'),
+  events: {
+    list:   (q = '') => apiFetch(`/events${q}`),
+    create: (data)   => apiFetch('/events', { method: 'POST', body: data }),
+    update: (id, d)  => apiFetch(`/events/${id}`, { method: 'PUT', body: d }),
+    delete: (id)     => apiFetch(`/events/${id}`, { method: 'DELETE' }),
+  },
   settings: {
     get:  ()     => apiFetch('/settings'),
     save: (data) => apiFetch('/settings', { method: 'PUT', body: data }),

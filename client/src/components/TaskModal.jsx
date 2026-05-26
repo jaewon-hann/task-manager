@@ -19,14 +19,14 @@ const labelStyle = {
   fontFamily: 'var(--mono)',
 };
 
-export default function TaskModal({ task, projects, onSave, onClose, hideDueDate = false }) {
+export default function TaskModal({ task, projects, onSave, onClose, hideDueDate = false, initialDueDate }) {
   const [form, setForm] = useState({
     title:      task?.title      || '',
     project_id: task?.project_id || '',
     category:   task?.category   || '',
     priority:   task?.priority   || 'medium',
     status:     task?.status     || 'todo',
-    due_date:   task?.due_date   || '',
+    due_date:   task?.due_date   || initialDueDate || '',
     memo:       task?.memo       || '',
   });
   const [saving, setSaving] = useState(false);

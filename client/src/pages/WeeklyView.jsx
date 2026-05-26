@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { api } from '../api.js';
 import TaskModal from '../components/TaskModal.jsx';
+import EventModal from '../components/EventModal.jsx';
 
 const PRIORITY_COLOR = { high: '#f06060', medium: '#f7c843', low: '#4ecca3' };
 const PROJECT_COLORS = ['#6f6af8','#4ecca3','#f7c843','#f06060','#e879f9','#38bdf8','#fb923c','#a3e635'];
@@ -40,10 +41,12 @@ function renderMemo(text) {
 export default function WeeklyView() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [tasks, setTasks]           = useState([]);
+  const [events, setEvents]         = useState([]);
   const [projects, setProjects]     = useState([]);
   const [loading, setLoading]       = useState(true);
   const [modal, setModal]           = useState(null);
-  const [selected, setSelected]     = useState(null); // { task, dateStr }
+  const [eventModal, setEventModal] = useState(null);
+  const [selected, setSelected]     = useState(null);
   const [expanded, setExpanded]     = useState({});
 
   const today = new Date().toISOString().slice(0, 10);
@@ -78,11 +81,16 @@ export default function WeeklyView() {
     setLoading(true);
     try {
       const q = new URLSearchParams({ due_from: currentWeek.monStr, due_to: currentWeek.sunStr });
-      const [t, p] = await Promise.all([api.tasks.list('?' + q.toString()), api.projects.list()]);
+      const [t, p, ev] = await Promise.all([
+        api.tasks.list('?' + q.toString()),
+        api.projects.list(),
+        api.events.list(`?from=${currentWeek.monStr}&to=${currentWeek.sunStr}`),
+      ]);
       const noDate = (await api.tasks.list('?exclude_done=1')).filter(t => !t.due_date);
       const merged = [...t, ...noDate.filter(n => !t.find(x => x.id === n.id))];
       setTasks(merged);
       setProjects(p);
+      setEvents(ev);
     } finally {
       setLoading(false);
     }
@@ -115,20 +123,40 @@ export default function WeeklyView() {
     setSelected(null);
   };
 
+  const [createDate, setCreateDate] = useState(null);
+
   const handleSave = async (data) => {
-    if (modal === 'create') await api.tasks.create(data);
-    else await api.tasks.update(modal.id, data);
+    if (modal === 'create') {
+      if (createDate) data.due_date = createDate;
+      await api.tasks.create(data);
+    } else {
+      await api.tasks.update(modal.id, data);
+    }
     setModal(null);
     load();
   };
+
+  const handleEventSave = async (data) => {
+    if (eventModal === 'create') await api.events.create(data);
+    else await api.events.update(eventModal.id, data);
+    setEventModal(null);
+    load();
+  };
+
+  const getEventsForDate = (dateStr) => events.filter(e => e.start_date <= dateStr && e.end_date >= dateStr);
 
   return (
     <div>
       <div style={{ padding: '20px 28px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ fontSize: '20px', fontWeight: '700' }}>주차별 업무</div>
-        <button onClick={() => setModal('create')} style={{ padding: '8px 16px', borderRadius: 'var(--radius-sm)', background: 'var(--accent)', color: '#fff', border: 'none', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
-          + 업무 추가
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={() => setEventModal('create')} style={{ padding: '8px 16px', borderRadius: 'var(--radius-sm)', background: 'var(--surface2)', color: 'var(--text2)', border: '1px solid var(--border2)', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
+            🗓 이벤트 추가
+          </button>
+          <button onClick={() => setModal('create')} style={{ padding: '8px 16px', borderRadius: 'var(--radius-sm)', background: 'var(--accent)', color: '#fff', border: 'none', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
+            + 업무 추가
+          </button>
+        </div>
       </div>
 
       {/* 주차 슬라이더 */}
@@ -151,66 +179,105 @@ export default function WeeklyView() {
         {loading ? (
           <div style={{ color: 'var(--text3)', padding: '40px 0', textAlign: 'center' }}>로딩 중...</div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px' }}>
-            {days.map((dateStr, i) => {
-              const dayTasks = grouped[dateStr] || [];
-              const isToday = dateStr === today;
-              const isPast = dateStr < today;
-              const extraCount = dayTasks.length > 4 ? dayTasks.length - 3 : 0;
-              const visibleTasks = extraCount > 0 ? dayTasks.slice(0, 3) : dayTasks;
+          <div style={{ position: 'relative' }}>
+            {/* 요일 헤더 + 날짜 그리드 */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px' }}>
+              {days.map((dateStr, i) => {
+                const dayTasks = grouped[dateStr] || [];
+                const isToday = dateStr === today;
+                const isPast = dateStr < today;
+                const extraCount = dayTasks.length > 4 ? dayTasks.length - 3 : 0;
+                const visibleTasks = extraCount > 0 ? dayTasks.slice(0, 3) : dayTasks;
+
+                return (
+                  <div key={dateStr} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {/* 요일 헤더 - 클릭 시 해당 날짜로 업무 추가 */}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '6px', cursor: 'pointer' }}
+                      onClick={() => { setCreateDate(dateStr); setModal('create'); }}>
+                      <div style={{ fontSize: '12px', color: isPast ? 'var(--text3)' : 'var(--text2)', marginBottom: '4px' }}>{DAY_LABEL[i]}</div>
+                      <div style={{
+                        width: '28px', height: '28px', borderRadius: '50%',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: isToday ? 'var(--accent)' : 'transparent',
+                        fontSize: '12px', fontWeight: isToday ? '700' : '400',
+                        color: isToday ? '#fff' : isPast ? 'var(--text3)' : 'var(--text)',
+                      }}>
+                        {parseInt(dateStr.slice(8))}
+                      </div>
+                    </div>
+
+                    {/* 이벤트 바 자리 확보 (실제 이벤트는 아래 absolute로) */}
+                    {events.filter(e => e.start_date <= dateStr && e.end_date >= dateStr).length > 0 && (
+                      <div style={{ height: '22px' }} />
+                    )}
+
+                    {/* 업무 바 */}
+                    {visibleTasks.map(task => (
+                      <div key={task.id}
+                        onClick={() => setSelected(selected?.task?.id === task.id ? null : { task, dateStr })}
+                        style={{
+                          padding: '5px 8px', borderRadius: '5px',
+                          background: task.status === 'done' ? 'var(--surface2)' : `${getProjectColor(task)}22`,
+                          borderLeft: `3px solid ${task.status === 'done' ? 'var(--border2)' : getProjectColor(task)}`,
+                          cursor: 'pointer', opacity: task.status === 'done' ? 0.5 : 1,
+                          outline: selected?.task?.id === task.id ? `2px solid ${getProjectColor(task)}` : 'none',
+                          transition: 'all 0.1s',
+                        }}>
+                        <div style={{ fontSize: '11px', color: task.status === 'done' ? 'var(--text3)' : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: task.status === 'done' ? 'line-through' : 'none' }}>
+                          {task.title}
+                        </div>
+                        {task.project_name && (
+                          <div style={{ fontSize: '10px', color: 'var(--text3)', marginTop: '1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {task.project_name}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    {extraCount > 0 && (
+                      <div style={{ fontSize: '11px', color: 'var(--text3)', padding: '3px 8px', textAlign: 'center', cursor: 'pointer' }}
+                        onClick={() => setSelected({ task: null, dateStr, showAll: true, tasks: dayTasks })}>
+                        +{extraCount}건 더보기
+                      </div>
+                    )}
+
+                    {dayTasks.length === 0 && (
+                      <div style={{ height: '32px', borderRadius: '5px', border: '1px dashed var(--border)', opacity: 0.3 }} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 이벤트 연속 바 오버레이 */}
+            {events.map((ev, ei) => {
+              const colWidth = 100 / 7;
+              const startIdx = days.findIndex(d => d >= ev.start_date);
+              const endIdx   = [...days].reverse().findIndex(d => d <= ev.end_date);
+              const startCol = startIdx === -1 ? 0 : startIdx;
+              const endCol   = endIdx   === -1 ? 6 : 6 - endIdx;
+              const spanCols = endCol - startCol + 1;
+              const isStart = days[startCol] === ev.start_date;
+              const isEnd   = days[endCol]   === ev.end_date;
 
               return (
-                <div key={dateStr} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  {/* 요일 헤더 */}
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '6px' }}>
-                    <div style={{ fontSize: '12px', color: isPast ? 'var(--text3)' : 'var(--text2)', marginBottom: '4px' }}>{DAY_LABEL[i]}</div>
-                    <div style={{
-                      width: '28px', height: '28px', borderRadius: '50%',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      background: isToday ? 'var(--accent)' : 'transparent',
-                      fontSize: '12px', fontWeight: isToday ? '700' : '400',
-                      color: isToday ? '#fff' : isPast ? 'var(--text3)' : 'var(--text)',
-                    }}>
-                      {parseInt(dateStr.slice(8))}
-                    </div>
-                  </div>
-
-                  {/* 업무 바 */}
-                  {visibleTasks.map(task => (
-                    <div key={task.id}
-                      onClick={() => setSelected(selected?.task?.id === task.id ? null : { task, dateStr })}
-                      style={{
-                        padding: '5px 8px', borderRadius: '5px',
-                        background: task.status === 'done' ? 'var(--surface2)' : `${getProjectColor(task)}22`,
-                        borderLeft: `3px solid ${task.status === 'done' ? 'var(--border2)' : getProjectColor(task)}`,
-                        cursor: 'pointer',
-                        opacity: task.status === 'done' ? 0.5 : 1,
-                        outline: selected?.task?.id === task.id ? `2px solid ${getProjectColor(task)}` : 'none',
-                        transition: 'all 0.1s',
-                      }}>
-                      <div style={{ fontSize: '11px', color: task.status === 'done' ? 'var(--text3)' : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: task.status === 'done' ? 'line-through' : 'none' }}>
-                        {task.title}
-                      </div>
-                      {task.project_name && (
-                        <div style={{ fontSize: '10px', color: 'var(--text3)', marginTop: '1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {task.project_name}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-
-                  {/* +N 더보기 */}
-                  {extraCount > 0 && (
-                    <div style={{ fontSize: '11px', color: 'var(--text3)', padding: '3px 8px', textAlign: 'center', cursor: 'pointer' }}
-                      onClick={() => setSelected({ task: null, dateStr, showAll: true, tasks: dayTasks })}>
-                      +{extraCount}건 더보기
-                    </div>
-                  )}
-
-                  {/* 업무 없을 때 빈 영역 */}
-                  {dayTasks.length === 0 && (
-                    <div style={{ height: '32px', borderRadius: '5px', border: '1px dashed var(--border)', opacity: 0.3 }} />
-                  )}
+                <div key={ev.id}
+                  onClick={() => setEventModal(ev)}
+                  style={{
+                    position: 'absolute',
+                    top: `${56 + ei * 24}px`,
+                    left: `calc(${startCol * colWidth}% + 4px)`,
+                    width: `calc(${spanCols * colWidth}% - 8px)`,
+                    height: '20px',
+                    background: ev.color,
+                    opacity: 0.9,
+                    borderRadius: isStart && isEnd ? '4px' : isStart ? '4px 0 0 4px' : isEnd ? '0 4px 4px 0' : '0',
+                    display: 'flex', alignItems: 'center', paddingLeft: isStart ? '8px' : '4px',
+                    fontSize: '11px', color: '#fff', fontWeight: '500',
+                    overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+                    cursor: 'pointer', zIndex: 2,
+                  }}>
+                  {isStart ? ev.title : ''}
                 </div>
               );
             })}
@@ -269,7 +336,22 @@ export default function WeeklyView() {
       </div>
 
       {modal && (
-        <TaskModal task={modal === 'create' ? null : modal} projects={projects} onSave={handleSave} onClose={() => setModal(null)} />
+        <TaskModal
+          task={modal === 'create' ? null : modal}
+          projects={projects}
+          onSave={handleSave}
+          onClose={() => { setModal(null); setCreateDate(null); }}
+          initialDueDate={modal === 'create' ? createDate : undefined}
+        />
+      )}
+      {eventModal && (
+        <EventModal
+          event={eventModal === 'create' ? null : eventModal}
+          initialDate={createDate}
+          onSave={handleEventSave}
+          onClose={() => setEventModal(null)}
+          onDelete={async (id) => { await api.events.delete(id); setEventModal(null); load(); }}
+        />
       )}
     </div>
   );

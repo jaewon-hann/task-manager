@@ -194,20 +194,28 @@ export default function TaskList({ filter = 'all', params = {} }) {
               const ss = STATUS_STYLE[task.status] || STATUS_STYLE.todo;
               const isExpanded = expanded[task.id];
 
+              const isDone = task.status === 'done';
+
               return (
-                <div key={task.id} style={{ background: 'var(--surface)', border: `1px solid ${isOverdue ? 'rgba(240,96,96,0.3)' : 'var(--border)'}`, borderRadius: 'var(--radius)' }}>
+                <div key={task.id} style={{
+                  background: isDone ? 'rgba(78,204,163,0.04)' : 'var(--surface)',
+                  border: `1px solid ${isDone ? 'rgba(78,204,163,0.2)' : isOverdue ? 'rgba(240,96,96,0.3)' : 'var(--border)'}`,
+                  borderRadius: 'var(--radius)',
+                  opacity: isDone ? 0.8 : 1,
+                }}>
                   <div style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: PRIORITY_COLOR[task.priority] || 'var(--text3)', flexShrink: 0 }} />
+                    <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: isDone ? '#4ecca3' : PRIORITY_COLOR[task.priority] || 'var(--text3)', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div onClick={() => task.memo && toggleExpand(task.id)}
-                        style={{ fontSize: '14px', fontWeight: '500', color: task.status === 'done' ? 'var(--text3)' : 'var(--text)', textDecoration: task.status === 'done' ? 'line-through' : 'none', cursor: task.memo ? 'pointer' : 'default', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        style={{ fontSize: '14px', fontWeight: '500', color: isDone ? 'var(--text3)' : 'var(--text)', textDecoration: isDone ? 'line-through' : 'none', cursor: task.memo ? 'pointer' : 'default', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {task.memo && <span style={{ fontSize: '10px', marginRight: '6px', color: 'var(--text3)' }}>{isExpanded ? '▼' : '▶'}</span>}
                         {task.title}
                       </div>
                       <div style={{ display: 'flex', gap: '10px', marginTop: '5px', flexWrap: 'wrap' }}>
                         {task.project_name && <span style={{ fontSize: '11px', color: 'var(--text3)' }}>📁 {task.project_name}</span>}
                         {task.category     && <span style={{ fontSize: '11px', color: 'var(--text3)' }}>🏷 {task.category}</span>}
-                        {task.due_date     && <span style={{ fontSize: '11px', color: isOverdue ? 'var(--danger)' : 'var(--text3)', fontFamily: 'var(--mono)' }}>{isOverdue ? `⚠ ${daysOverdue}일 초과` : `📅 ${task.due_date}`}</span>}
+                        {task.due_date     && !isDone && <span style={{ fontSize: '11px', color: isOverdue ? 'var(--danger)' : 'var(--text3)', fontFamily: 'var(--mono)' }}>{isOverdue ? `⚠ ${daysOverdue}일 초과` : `📅 ${task.due_date}`}</span>}
+                        {isDone && <span style={{ fontSize: '11px', color: '#4ecca3' }}>✓ 완료</span>}
                       </div>
                     </div>
                     {filter !== 'archive' && (

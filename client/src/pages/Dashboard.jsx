@@ -33,22 +33,28 @@ function TaskRow({ task }) {
   const [expanded, setExpanded] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
   const isOverdue = task.due_date && task.due_date < today && task.status !== 'done';
+  const isDone = task.status === 'done';
   return (
-    <div style={{ borderBottom: '1px solid var(--border)' }}>
+    <div style={{ borderBottom: '1px solid var(--border)', opacity: isDone ? 0.75 : 1 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '11px 16px' }}>
-        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: PRIORITY_COLOR[task.priority] || 'var(--text3)', flexShrink: 0 }} />
+        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isDone ? '#4ecca3' : PRIORITY_COLOR[task.priority] || 'var(--text3)', flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div onClick={() => task.memo && setExpanded(e => !e)}
-            style={{ fontSize: '13px', color: 'var(--text)', fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: task.memo ? 'pointer' : 'default' }}>
+            style={{ fontSize: '13px', color: isDone ? 'var(--text3)' : 'var(--text)', fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: task.memo ? 'pointer' : 'default', textDecoration: isDone ? 'line-through' : 'none' }}>
             {task.memo && <span style={{ fontSize: '10px', marginRight: '5px', color: 'var(--text3)' }}>{expanded ? '▼' : '▶'}</span>}
             {task.title}
           </div>
           {task.project_name && <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>{task.project_name}</div>}
         </div>
-        {task.due_date && <div style={{ fontSize: '11px', color: isOverdue ? 'var(--danger)' : 'var(--text3)', fontFamily: 'var(--mono)', flexShrink: 0 }}>{isOverdue ? '⚠ ' : ''}{task.due_date}</div>}
-        <div style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: task.status === 'in_progress' ? 'rgba(111,106,248,0.15)' : 'var(--surface2)', color: task.status === 'in_progress' ? 'var(--accent)' : 'var(--text3)', flexShrink: 0 }}>
-          {STATUS_LABEL[task.status]}
-        </div>
+        {isDone
+          ? <span style={{ fontSize: '11px', color: '#4ecca3', flexShrink: 0 }}>✓ 완료</span>
+          : task.due_date && <div style={{ fontSize: '11px', color: isOverdue ? 'var(--danger)' : 'var(--text3)', fontFamily: 'var(--mono)', flexShrink: 0 }}>{isOverdue ? '⚠ ' : ''}{task.due_date}</div>
+        }
+        {!isDone && (
+          <div style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: task.status === 'in_progress' ? 'rgba(111,106,248,0.15)' : 'var(--surface2)', color: task.status === 'in_progress' ? 'var(--accent)' : 'var(--text3)', flexShrink: 0 }}>
+            {STATUS_LABEL[task.status]}
+          </div>
+        )}
       </div>
       {expanded && task.memo && (
         <div style={{ padding: '0 16px 12px 36px', fontSize: '12px', color: 'var(--text2)', lineHeight: '1.7', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
@@ -90,7 +96,7 @@ export default function Dashboard({ onNavigate }) {
 
         {/* 2. 통계 카드 */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '12px' }}>
-          <StatCard label="전체 진행 중" value={stats.total}       color="var(--accent)" sub="완료 제외"      onClick={() => onNavigate('tasks')} />
+          <StatCard label="진행 중"      value={stats.total}       color="var(--accent)" sub="in_progress 상태"  onClick={() => onNavigate('tasks', { status: 'in_progress' })} />
           <StatCard label="오늘 할 일"   value={stats.today}       color="#4ecca3"        sub="오늘 마감"      onClick={() => onNavigate('today')} />
           <StatCard label="진행 중"      value={stats.in_progress} color="#f7c843"        sub="작업 중인 업무" onClick={() => onNavigate('tasks', { status: 'in_progress' })} />
           <StatCard label="기한 초과"    value={stats.overdue}     color="var(--danger)"  sub="즉시 처리 필요" onClick={() => onNavigate('tasks', { overdue: true })} />
@@ -124,17 +130,22 @@ export default function Dashboard({ onNavigate }) {
           <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '16px 20px' }}>
             <div style={{ fontSize: '14px', fontWeight: '700', marginBottom: '14px' }}>프로젝트별 현황</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {projects.filter(p => !p.archived).map(p => (
-                <div key={p.id} style={{ cursor: 'pointer' }} onClick={() => onNavigate('tasks', { project_id: String(p.id) })}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '13px', color: 'var(--text)' }}>{p.name}</span>
-                    <span style={{ fontSize: '11px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>진행 중 {p.task_count}건 →</span>
+              {projects.filter(p => !p.archived).map(p => {
+                const progressPct = p.total_count > 0 ? Math.round((p.in_progress_count / p.total_count) * 100) : 0;
+                return (
+                  <div key={p.id} style={{ cursor: 'pointer' }} onClick={() => onNavigate('tasks', { project_id: String(p.id) })}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', alignItems: 'center' }}>
+                      <span style={{ fontSize: '13px', color: 'var(--text)' }}>{p.name}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>
+                        진행 중 {p.in_progress_count} / 전체 {p.total_count}건 ({progressPct}%) →
+                      </span>
+                    </div>
+                    <div style={{ height: '5px', background: 'var(--surface2)', borderRadius: '3px' }}>
+                      <div style={{ height: '5px', background: p.color || 'var(--accent)', borderRadius: '3px', width: `${progressPct}%`, minWidth: progressPct > 0 ? '5px' : '0', transition: 'width 0.5s' }} />
+                    </div>
                   </div>
-                  <div style={{ height: '4px', background: 'var(--surface2)', borderRadius: '2px' }}>
-                    <div style={{ height: '4px', background: p.color || 'var(--accent)', borderRadius: '2px', width: p.task_count > 0 ? '60%' : '4px', transition: 'width 0.5s' }} />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
