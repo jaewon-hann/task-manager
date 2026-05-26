@@ -19,7 +19,9 @@ export async function apiFetch(path, options = {}) {
     ...options, headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
-  if (res.status === 401) {
+
+  // 로그인 API는 401을 세션 만료로 처리하지 않음
+  if (res.status === 401 && path !== '/auth/login') {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     localStorage.removeItem('targetUserId');
@@ -27,15 +29,18 @@ export async function apiFetch(path, options = {}) {
     setTimeout(() => window.location.reload(), 1500);
     return;
   }
+
   if (res.status === 403) {
     showToast('다른 팀원의 워크플레이스는 조회만 가능합니다.', 'error');
     throw new Error('403 Forbidden');
   }
+
   if (!res.ok) {
     let errMsg = '오류가 발생했습니다.';
     try { errMsg = JSON.parse(await res.text()).error || errMsg; } catch {}
     throw new Error(errMsg);
   }
+
   return res.json();
 }
 
