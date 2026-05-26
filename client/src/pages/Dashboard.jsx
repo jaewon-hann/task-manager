@@ -2,6 +2,74 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import OKRView from './OKRView.jsx';
 
+function getMondayStr() {
+  const d = new Date();
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  d.setHours(0,0,0,0);
+  return d.toISOString().slice(0,10);
+}
+
+function WeeklyNoteInline() {
+  const weekStart = getMondayStr();
+  const [content, setContent] = React.useState('');
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+  const isReadOnly = !!localStorage.getItem('targetUserId');
+
+  React.useEffect(() => {
+    api.weeklyNotes.get(weekStart).then(d => setContent(d.content || '')).catch(() => {});
+  }, [weekStart]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api.weeklyNotes.save(weekStart, draft);
+      setContent(draft);
+      setEditing(false);
+    } catch(e) {}
+    setSaving(false);
+  };
+
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+      <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: '14px', fontWeight: '700' }}>📝 이번 주 메모</span>
+        {!isReadOnly && !editing && (
+          <button onClick={() => { setDraft(content); setEditing(true); }} style={{ fontSize: '12px', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}>편집</button>
+        )}
+        {editing && (
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={handleSave} disabled={saving} style={{ fontSize: '12px', color: '#fff', background: 'var(--accent)', border: 'none', borderRadius: '6px', padding: '3px 10px', cursor: 'pointer' }}>{saving ? '저장 중...' : '저장'}</button>
+            <button onClick={() => setEditing(false)} style={{ fontSize: '12px', color: 'var(--text2)', background: 'none', border: '1px solid var(--border2)', borderRadius: '6px', padding: '3px 10px', cursor: 'pointer' }}>취소</button>
+          </div>
+        )}
+      </div>
+      <div style={{ padding: '14px 16px', minHeight: '70px' }}>
+        {editing ? (
+          <textarea autoFocus value={draft} onChange={e => setDraft(e.target.value)}
+            placeholder="이번 주 계획, 목표, 메모를 자유롭게 작성하세요..."
+            style={{ width: '100%', minHeight: '70px', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border2)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '13px', resize: 'vertical', lineHeight: '1.7', fontFamily: 'var(--sans)' }} />
+        ) : content ? (
+          <div onClick={() => { if (!isReadOnly) { setDraft(content); setEditing(true); } }}
+            style={{ fontSize: '13px', color: 'var(--text2)', lineHeight: '1.7', whiteSpace: 'pre-wrap', wordBreak: 'break-word', cursor: isReadOnly ? 'default' : 'pointer' }}>
+            {content}
+          </div>
+        ) : (
+          <div onClick={() => { if (!isReadOnly) { setDraft(''); setEditing(true); } }}
+            style={{ fontSize: '13px', color: 'var(--text3)', fontStyle: 'italic', cursor: isReadOnly ? 'default' : 'pointer' }}>
+            {isReadOnly ? '작성된 메모가 없습니다.' : '클릭해서 이번 주 메모를 작성하세요...'}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+
 const PRIORITY_COLOR = { high: '#f06060', medium: '#f7c843', low: '#4ecca3' };
 const STATUS_LABEL   = { todo: '할 일', in_progress: '진행 중', done: '완료' };
 
@@ -31,7 +99,7 @@ function StatCard({ label, value, color, sub, onClick }) {
 
 function TaskRow({ task }) {
   const [expanded, setExpanded] = useState(false);
-  const today = (() => { const d = new Date(); return new Date(d.getTime() + 9*60*60*1000).toISOString().slice(0,10); })();
+  const today = new Date().toISOString().slice(0, 10);
   const isOverdue = task.due_date && task.due_date < today && task.status !== 'done';
   const isDone = task.status === 'done';
   return (
@@ -93,6 +161,7 @@ export default function Dashboard({ onNavigate }) {
 
         {/* 1. 월별 OKR - 맨 위 */}
         <OKRView />
+        <WeeklyNoteInline />
 
         {/* 2. 통계 카드 */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '12px' }}>

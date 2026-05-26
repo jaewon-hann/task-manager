@@ -16,12 +16,7 @@ app.use(express.static(path.join(__dirname, '../client/dist')));
 
 initDB();
 
-// 한국 시간(KST) 기준 오늘 날짜
-const today = () => {
-  const d = new Date();
-  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
-  return kst.toISOString().slice(0, 10);
-};
+const today = () => new Date().toISOString().slice(0, 10);
 
 // ── 인증 미들웨어 ──────────────────────────────────────────
 function authMiddleware(req, res, next) {
@@ -128,7 +123,7 @@ app.put('/api/users/:id', authMiddleware, adminMiddleware, async (req, res) => {
 app.delete('/api/users/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     if (parseInt(req.params.id)===req.user.id) return res.status(400).json({ error: '본인 계정은 삭제할 수 없습니다' });
-    await query('DELETE FROM users WHERE id=$1', [req.params.id]);
+    await query('UPDATE users SET is_active=false WHERE id=$1', [req.params.id]);
     res.json({ message: '비활성화되었습니다' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -361,6 +356,32 @@ app.post('/api/test-mail', authMiddleware, async (req, res) => {
     execSync(`node ${path.join(__dirname,'../scripts/sendDailyTDL.js')}`,{stdio:'pipe',timeout:30000});
     res.json({ message: 'ok' });
   } catch (e) { res.status(500).json({ error: e.stderr?.toString()||e.message }); }
+});
+
+
+// ── Weekly Notes ───────────────────────────────────────────
+app.get('/api/weekly-notes/:weekStart', authMiddleware, async (req, res) => {
+  try {
+    const userId = getTargetUserId(req);
+    const result = await query(
+      'SELECT * FROM weekly_notes WHERE user_id=$1 AND week_start=$2',
+      [userId, req.params.weekStart]
+    );
+    res.json(result.rows[0] || { content: '' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/weekly-notes/:weekStart', authMiddleware, async (req, res) => {
+  try {
+    if (isReadOnly(req)) return res.status(403).json({ error: '다른 팀원의 워크플레이스는 수정할 수 없습니다' });
+    const { content } = req.body;
+    await query(`
+      INSERT INTO weekly_notes (user_id, week_start, content)
+      VALUES ($1,$2,$3)
+      ON CONFLICT (user_id, week_start) DO UPDATE SET content=$3, updated_at=NOW()
+    `, [req.user.id, req.params.weekStart, content || '']);
+    res.json({ message: 'Saved' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('*', (req, res) => {
