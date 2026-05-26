@@ -49,7 +49,7 @@ export default function WeeklyView() {
   const [selected, setSelected]     = useState(null);
   const [expanded, setExpanded]     = useState({});
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = (() => { const d = new Date(); return new Date(d.getTime() + 9*60*60*1000).toISOString().slice(0,10); })();
 
   const weeks = Array.from({ length: 9 }, (_, i) => {
     const offset = i - 4;

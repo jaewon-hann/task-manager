@@ -1,16 +1,17 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+
+// DATE 타입(OID 1082)을 문자열 그대로 반환 (UTC 변환 방지)
+types.setTypeParser(1082, val => val);
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
 });
 
-// 쿼리 헬퍼
 async function query(text, params) {
   const client = await pool.connect();
   try {
-    const result = await client.query(text, params);
-    return result;
+    return await client.query(text, params);
   } finally {
     client.release();
   }

@@ -31,7 +31,7 @@ function StatCard({ label, value, color, sub, onClick }) {
 
 function TaskRow({ task }) {
   const [expanded, setExpanded] = useState(false);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = (() => { const d = new Date(); return new Date(d.getTime() + 9*60*60*1000).toISOString().slice(0,10); })();
   const isOverdue = task.due_date && task.due_date < today && task.status !== 'done';
   const isDone = task.status === 'done';
   return (

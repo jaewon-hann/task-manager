@@ -37,7 +37,7 @@ export default function MonthView() {
   const [dragging, setDragging] = useState(null);
   const [dragOver, setDragOver] = useState(null);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = (() => { const d = new Date(); return new Date(d.getTime() + 9*60*60*1000).toISOString().slice(0,10); })();
 
   const load = useCallback(async () => {
     setLoading(true);

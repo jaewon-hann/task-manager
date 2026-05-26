@@ -42,7 +42,8 @@ export default function TaskList({ filter = 'all', params = {} }) {
   });
   const [search, setSearch] = useState('');
 
-  const today = new Date().toISOString().slice(0, 10);
+  const getKSTToday = () => { const d = new Date(); return new Date(d.getTime() + 9*60*60*1000).toISOString().slice(0,10); };
+  const today = getKSTToday();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -102,7 +103,7 @@ export default function TaskList({ filter = 'all', params = {} }) {
     if (modal === 'create') {
       // 오늘 할 일 탭에서 추가하면 당일 날짜 자동 설정
       if (filter === 'today') {
-        data.due_date = new Date().toISOString().slice(0, 10);
+        data.due_date = getKSTToday();
       }
       await api.tasks.create(data);
     } else {

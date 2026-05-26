@@ -61,14 +61,39 @@ export default function TeamManagement({ currentUser }) {
     } finally { setSaving(false); }
   };
 
-  const handleRemove = async (user) => {
-    if (!confirm(`${user.name}님을 비활성화하시겠습니까? 해당 팀원은 로그인할 수 없게 됩니다.`)) return;
+  // 비활성화 (로그인 차단, 데이터 유지)
+  const handleDeactivate = async (user) => {
+    if (!confirm(`${user.name}님을 비활성화하시겠습니까?\n로그인이 차단되지만 데이터는 유지됩니다.`)) return;
     try {
-      await api.users.remove(user.id);
+      await api.users.update(user.id, { ...user, is_active: false });
       showMsg('✅ 비활성화되었습니다');
       load();
     } catch (e) {
       try { showMsg('❌ ' + JSON.parse(e.message).error); } catch { showMsg('❌ 실패'); }
+    }
+  };
+
+  // 재활성화
+  const handleActivate = async (user) => {
+    if (!confirm(`${user.name}님을 다시 활성화하시겠습니까?`)) return;
+    try {
+      await api.users.update(user.id, { ...user, is_active: true });
+      showMsg('✅ 활성화되었습니다');
+      load();
+    } catch (e) {
+      try { showMsg('❌ ' + JSON.parse(e.message).error); } catch { showMsg('❌ 실패'); }
+    }
+  };
+
+  // 완전 삭제
+  const handleDelete = async (user) => {
+    if (!confirm(`${user.name}님을 완전히 삭제하시겠습니까?\n⚠️ 해당 팀원의 모든 업무/프로젝트 데이터가 삭제됩니다. 이 작업은 되돌릴 수 없습니다.`)) return;
+    try {
+      await api.users.remove(user.id);
+      showMsg('✅ 삭제되었습니다');
+      load();
+    } catch (e) {
+      try { showMsg('❌ ' + JSON.parse(e.message).error); } catch { showMsg('❌ 삭제 실패'); }
     }
   };
 
@@ -124,7 +149,7 @@ export default function TeamManagement({ currentUser }) {
             </div>
           </div>
           <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '14px' }}>
-            💡 추가 후 팀원에게 이메일과 임시 비밀번호를 전달해주세요. 첫 로그인 후 비밀번호를 변경할 수 있습니다.
+            💡 추가 후 팀원에게 이메일과 임시 비밀번호를 전달해주세요.
           </div>
           <button onClick={handleCreate} disabled={saving} style={{
             padding: '9px 20px', borderRadius: '6px', background: 'var(--accent)',
@@ -138,7 +163,7 @@ export default function TeamManagement({ currentUser }) {
         {/* 팀원 목록 */}
         <div style={sectionStyle}>
           <div style={{ fontSize: '15px', fontWeight: '700', marginBottom: '18px' }}>
-            👥 팀원 목록 ({users.filter(u => u.is_active).length}명 활성)
+            👥 팀원 목록 ({users.filter(u => u.is_active).length}명 활성 / 총 {users.length}명)
           </div>
 
           {loading ? (
@@ -148,11 +173,10 @@ export default function TeamManagement({ currentUser }) {
               {users.map(user => (
                 <div key={user.id} style={{
                   background: 'var(--surface2)', borderRadius: '10px', padding: '14px 16px',
-                  border: `1px solid ${user.is_active ? 'var(--border)' : 'var(--border)'}`,
-                  opacity: user.is_active ? 1 : 0.5,
+                  border: '1px solid var(--border)',
+                  opacity: user.is_active ? 1 : 0.6,
                 }}>
                   {editingId === user.id ? (
-                    // 수정 모드
                     <div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
                         <div>
@@ -192,20 +216,18 @@ export default function TeamManagement({ currentUser }) {
                       </div>
                     </div>
                   ) : (
-                    // 보기 모드
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <div style={{
-                        width: '36px', height: '36px', borderRadius: '50%',
+                        width: '36px', height: '36px', borderRadius: '50%', flexShrink: 0,
                         background: user.role === 'admin' ? 'rgba(111,106,248,0.2)' : 'rgba(78,204,163,0.2)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: '14px', fontWeight: '700',
                         color: user.role === 'admin' ? 'var(--accent)' : 'var(--teal)',
-                        flexShrink: 0,
                       }}>
                         {user.name[0]}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                           <span style={{ fontSize: '14px', fontWeight: '500' }}>{user.name}</span>
                           <span style={{
                             fontSize: '10px', padding: '2px 7px', borderRadius: '10px',
@@ -222,20 +244,34 @@ export default function TeamManagement({ currentUser }) {
                         </div>
                         <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>{user.email}</div>
                       </div>
+
                       {user.id !== currentUser.id && (
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                        <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
                           <button onClick={() => handleEdit(user)} style={{
                             padding: '5px 12px', borderRadius: '6px', fontSize: '12px',
                             background: 'var(--surface)', border: '1px solid var(--border2)',
                             color: 'var(--text2)', cursor: 'pointer',
                           }}>수정</button>
-                          {user.is_active && (
-                            <button onClick={() => handleRemove(user)} style={{
+
+                          {user.is_active ? (
+                            <button onClick={() => handleDeactivate(user)} style={{
                               padding: '5px 12px', borderRadius: '6px', fontSize: '12px',
-                              background: 'rgba(240,96,96,0.1)', border: '1px solid rgba(240,96,96,0.2)',
-                              color: 'var(--danger)', cursor: 'pointer',
+                              background: 'rgba(247,200,67,0.1)', border: '1px solid rgba(247,200,67,0.3)',
+                              color: 'var(--amber)', cursor: 'pointer',
                             }}>비활성화</button>
+                          ) : (
+                            <button onClick={() => handleActivate(user)} style={{
+                              padding: '5px 12px', borderRadius: '6px', fontSize: '12px',
+                              background: 'rgba(78,204,163,0.1)', border: '1px solid rgba(78,204,163,0.3)',
+                              color: 'var(--teal)', cursor: 'pointer',
+                            }}>활성화</button>
                           )}
+
+                          <button onClick={() => handleDelete(user)} style={{
+                            padding: '5px 12px', borderRadius: '6px', fontSize: '12px',
+                            background: 'rgba(240,96,96,0.1)', border: '1px solid rgba(240,96,96,0.2)',
+                            color: 'var(--danger)', cursor: 'pointer',
+                          }}>삭제</button>
                         </div>
                       )}
                     </div>

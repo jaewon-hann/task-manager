@@ -16,7 +16,12 @@ app.use(express.static(path.join(__dirname, '../client/dist')));
 
 initDB();
 
-const today = () => new Date().toISOString().slice(0, 10);
+// 한국 시간(KST) 기준 오늘 날짜
+const today = () => {
+  const d = new Date();
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  return kst.toISOString().slice(0, 10);
+};
 
 // ── 인증 미들웨어 ──────────────────────────────────────────
 function authMiddleware(req, res, next) {
@@ -123,7 +128,7 @@ app.put('/api/users/:id', authMiddleware, adminMiddleware, async (req, res) => {
 app.delete('/api/users/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     if (parseInt(req.params.id)===req.user.id) return res.status(400).json({ error: '본인 계정은 삭제할 수 없습니다' });
-    await query('UPDATE users SET is_active=false WHERE id=$1', [req.params.id]);
+    await query('DELETE FROM users WHERE id=$1', [req.params.id]);
     res.json({ message: '비활성화되었습니다' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -170,7 +175,7 @@ app.get('/api/tasks/week', authMiddleware, async (req, res) => {
     const mon=monday.toISOString().slice(0,10); const sun=sunday.toISOString().slice(0,10);
     const result = await query(`
       SELECT t.*,p.name AS project_name FROM tasks t LEFT JOIN projects p ON p.id=t.project_id
-      WHERE t.user_id=$1 AND t.status!='done' AND (t.due_date IS NULL OR (t.due_date>=$2 AND t.due_date<=$3) OR t.status='in_progress')
+      WHERE t.user_id=$1 AND t.status!='done' AND ((t.due_date>=$2 AND t.due_date<=$3) OR t.due_date IS NULL OR t.status='in_progress')
       ORDER BY t.due_date ASC NULLS LAST, CASE t.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END
     `, [userId, mon, sun]);
     res.json(result.rows);
@@ -185,7 +190,7 @@ app.get('/api/tasks/month', authMiddleware, async (req, res) => {
     const lastDay=new Date(n.getFullYear(),n.getMonth()+1,0).toISOString().slice(0,10);
     const result = await query(`
       SELECT t.*,p.name AS project_name FROM tasks t LEFT JOIN projects p ON p.id=t.project_id
-      WHERE t.user_id=$1 AND t.status!='done' AND (t.due_date IS NULL OR (t.due_date>=$2 AND t.due_date<=$3) OR t.status='in_progress')
+      WHERE t.user_id=$1 AND t.status!='done' AND ((t.due_date>=$2 AND t.due_date<=$3) OR t.due_date IS NULL OR t.status='in_progress')
       ORDER BY t.due_date ASC NULLS LAST, CASE t.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END
     `, [userId, firstDay, lastDay]);
     res.json(result.rows);
