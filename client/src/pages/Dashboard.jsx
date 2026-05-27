@@ -4,11 +4,11 @@ import OKRView from './OKRView.jsx';
 
 function getMondayStr() {
   const d = new Date();
-  const day = d.getDay();
+  const kst = new Date(d.getTime() + 9*60*60*1000);
+  const day = kst.getUTCDay();
   const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  d.setHours(0,0,0,0);
-  return d.toISOString().slice(0,10);
+  kst.setUTCDate(kst.getUTCDate() + diff);
+  return kst.toISOString().slice(0,10);
 }
 
 function WeeklyNoteInline() {
@@ -99,7 +99,7 @@ function StatCard({ label, value, color, sub, onClick }) {
 
 function TaskRow({ task }) {
   const [expanded, setExpanded] = useState(false);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = (() => { const d = new Date(); return new Date(d.getTime() + 9*60*60*1000).toISOString().slice(0,10); })();
   const isOverdue = task.due_date && task.due_date < today && task.status !== 'done';
   const isDone = task.status === 'done';
   return (
