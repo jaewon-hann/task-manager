@@ -165,7 +165,7 @@ export default function Dashboard({ onNavigate }) {
 
         {/* 2. 통계 카드 */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '12px' }}>
-          <StatCard label="진행 중"      value={stats.total}       color="var(--accent)" sub="in_progress 상태"  onClick={() => onNavigate('tasks', { status: 'in_progress' })} />
+          <StatCard label="전체 업무"    value={stats.total}       color="var(--accent)" sub="진행 중 업무"       onClick={() => onNavigate('tasks')} />
           <StatCard label="오늘 할 일"   value={stats.today}       color="#4ecca3"        sub="오늘 마감"      onClick={() => onNavigate('today')} />
           <StatCard label="진행 중"      value={stats.in_progress} color="#f7c843"        sub="작업 중인 업무" onClick={() => onNavigate('tasks', { status: 'in_progress' })} />
           <StatCard label="기한 초과"    value={stats.overdue}     color="var(--danger)"  sub="즉시 처리 필요" onClick={() => onNavigate('tasks', { overdue: true })} />
