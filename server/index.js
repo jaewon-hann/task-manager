@@ -343,10 +343,15 @@ app.put('/api/settings', authMiddleware, async (req, res) => {
 app.get('/api/stats', authMiddleware, async (req, res) => {
   try {
     const userId=getTargetUserId(req); const todayStr=today();
-    const result=await query(`SELECT COUNT(*) FILTER (WHERE status='in_progress') AS in_progress,COUNT(*) FILTER (WHERE status!='done' AND (due_date IS NULL OR due_date=$2)) AS today,COUNT(*) FILTER (WHERE due_date<$2 AND status!='done') AS overdue FROM tasks WHERE user_id=$1`,
+    const result=await query(`SELECT
+      COUNT(*) FILTER (WHERE status!='done') AS total,
+      COUNT(*) FILTER (WHERE status='in_progress') AS in_progress,
+      COUNT(*) FILTER (WHERE status!='done' AND (due_date IS NULL OR due_date=$2)) AS today,
+      COUNT(*) FILTER (WHERE due_date<$2 AND status!='done') AS overdue
+      FROM tasks WHERE user_id=$1`,
       [userId,todayStr]);
     const r=result.rows[0];
-    res.json({total:parseInt(r.in_progress),today:parseInt(r.today),in_progress:parseInt(r.in_progress),overdue:parseInt(r.overdue)});
+    res.json({total:parseInt(r.total),today:parseInt(r.today),in_progress:parseInt(r.in_progress),overdue:parseInt(r.overdue)});
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
