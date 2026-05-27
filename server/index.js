@@ -377,17 +377,25 @@ app.post('/api/send-daily-mail', async (req, res) => {
 
 // ── 테스트 메일 (본인에게만) ───────────────────────────────
 app.post('/api/test-mail', authMiddleware, async (req, res) => {
+  console.log('📧 테스트 메일 요청 받음:', req.user.name);
   res.json({ message: 'ok' });
-  (async () => {
+  setImmediate(async () => {
     try {
+      console.log('📧 메일 생성 시작...');
       const { buildTDLContent, sendMailToUser } = require('../scripts/sendDailyTDL.js');
+      console.log('📧 DB에서 유저 조회 중...');
       const userRes = await query('SELECT * FROM users WHERE id=$1', [req.user.id]);
       const user = userRes.rows[0];
+      console.log(`📧 ${user.name} TDL 생성 중...`);
       const html = await buildTDLContent(user.id);
+      console.log(`📧 메일 발송 중...`);
       await sendMailToUser(user, html);
       console.log(`✅ 테스트 메일 발송 완료: ${user.name}`);
-    } catch (e) { console.error('❌ 테스트 메일 실패:', e.message); }
-  })();
+    } catch (e) {
+      console.error('❌ 테스트 메일 실패:', e.message);
+      console.error(e.stack);
+    }
+  });
 });
 
 
