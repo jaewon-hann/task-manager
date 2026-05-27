@@ -355,15 +355,39 @@ app.get('/api/stats', authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── 자동 메일 발송 (cron-job.org에서 호출) ───────────────
+app.post('/api/send-daily-mail', async (req, res) => {
+  const secret = req.headers['x-cron-secret'];
+  if (secret !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
+  res.json({ message: 'started' });
+  (async () => {
+    try {
+      const { buildTDLContent, sendMailToUser } = require('../scripts/sendDailyTDL.js');
+      const usersRes = await query('SELECT * FROM users WHERE is_active=true', []);
+      for (const user of usersRes.rows) {
+        try {
+          const html = await buildTDLContent(user.id);
+          await sendMailToUser(user, html);
+        } catch (e) { console.error(`❌ ${user.name} 실패:`, e.message); }
+      }
+      console.log('✅ 전체 메일 발송 완료');
+    } catch (e) { console.error('❌ 메일 발송 오류:', e.message); }
+  })();
+});
+
+// ── 테스트 메일 (본인에게만) ───────────────────────────────
 app.post('/api/test-mail', authMiddleware, async (req, res) => {
-  try {
-    const { buildTDLContent, sendMailToUser } = require('../scripts/sendDailyTDL.js');
-    const userRes = await query('SELECT * FROM users WHERE id=$1', [req.user.id]);
-    const user = userRes.rows[0];
-    const html = await buildTDLContent(user.id);
-    await sendMailToUser(user, html);
-    res.json({ message: 'ok' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  res.json({ message: 'ok' });
+  (async () => {
+    try {
+      const { buildTDLContent, sendMailToUser } = require('../scripts/sendDailyTDL.js');
+      const userRes = await query('SELECT * FROM users WHERE id=$1', [req.user.id]);
+      const user = userRes.rows[0];
+      const html = await buildTDLContent(user.id);
+      await sendMailToUser(user, html);
+      console.log(`✅ 테스트 메일 발송 완료: ${user.name}`);
+    } catch (e) { console.error('❌ 테스트 메일 실패:', e.message); }
+  })();
 });
 
 
