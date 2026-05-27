@@ -1,5 +1,4 @@
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
-const nodemailer = require('nodemailer');
 const { query } = require('../server/db');
 
 const getKSTToday = () => {
@@ -89,7 +88,6 @@ ${overdue.length ? overdue.map(taskToText).join('\n') : '없음'}
   });
 
   if (!res.ok) throw new Error(`Claude API 오류: ${await res.text()}`);
-
   const json = await res.json();
   let html = json.content[0].text;
   html = html.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
@@ -99,34 +97,41 @@ ${overdue.length ? overdue.map(taskToText).join('\n') : '없음'}
 async function sendMailToUser(user, htmlContent) {
   const settingsRes = await query('SELECT * FROM settings WHERE user_id=$1', [user.id]);
   const settings = settingsRes.rows[0] || {};
+  const mailTo = settings.mail_to || user.email;
+  const mailFrom = process.env.RESEND_FROM || 'onboarding@resend.dev';
 
-  const mailTo   = settings.mail_to || user.email;
-  const mailFrom = process.env.GMAIL_FROM;
-
-  if (!mailTo || !mailFrom) {
-    console.log(`⏭ ${user.name}: 메일 설정 없음, 건너뜀`);
+  if (!mailTo) {
+    console.log(`⏭ ${user.name}: 수신 이메일 없음, 건너뜀`);
     return;
   }
 
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: mailFrom, pass: process.env.GMAIL_APP_PASSWORD },
-  });
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw new Error('RESEND_API_KEY 환경변수가 없습니다.');
 
   const todayStr = getKSTToday();
-  await transporter.sendMail({
-    from: mailFrom,
-    to: mailTo,
-    subject: `[TDL] ${todayStr} ${user.name}님의 오늘 업무`,
-    html: htmlContent,
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      from: mailFrom,
+      to: mailTo,
+      subject: `[TDL] ${todayStr} ${user.name}님의 오늘 업무`,
+      html: htmlContent,
+    }),
   });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Resend 오류: ${err}`);
+  }
   console.log(`✅ ${user.name} → ${mailTo} 발송 완료`);
 }
 
-// 서버에서 require할 때는 아래 함수들만 export
 module.exports = { buildTDLContent, sendMailToUser };
 
-// 직접 node로 실행할 때만 main() 실행
 if (require.main === module) {
   async function main() {
     console.log('📋 전체 팀원 TDL 생성 중...');
