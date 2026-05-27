@@ -357,10 +357,13 @@ app.get('/api/stats', authMiddleware, async (req, res) => {
 
 app.post('/api/test-mail', authMiddleware, async (req, res) => {
   try {
-    const {execSync}=require('child_process');
-    execSync(`node ${path.join(__dirname,'../scripts/sendDailyTDL.js')}`,{stdio:'pipe',timeout:30000});
+    const { buildTDLContent, sendMailToUser } = require('../scripts/sendDailyTDL.js');
+    const userRes = await query('SELECT * FROM users WHERE id=$1', [req.user.id]);
+    const user = userRes.rows[0];
+    const html = await buildTDLContent(user.id);
+    await sendMailToUser(user, html);
     res.json({ message: 'ok' });
-  } catch (e) { res.status(500).json({ error: e.stderr?.toString()||e.message }); }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 
@@ -368,10 +371,7 @@ app.post('/api/test-mail', authMiddleware, async (req, res) => {
 app.get('/api/weekly-notes/:weekStart', authMiddleware, async (req, res) => {
   try {
     const userId = getTargetUserId(req);
-    const result = await query(
-      'SELECT * FROM weekly_notes WHERE user_id=$1 AND week_start=$2',
-      [userId, req.params.weekStart]
-    );
+    const result = await query('SELECT * FROM weekly_notes WHERE user_id=$1 AND week_start=$2', [userId, req.params.weekStart]);
     res.json(result.rows[0] || { content: '' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -380,11 +380,8 @@ app.put('/api/weekly-notes/:weekStart', authMiddleware, async (req, res) => {
   try {
     if (isReadOnly(req)) return res.status(403).json({ error: '다른 팀원의 워크플레이스는 수정할 수 없습니다' });
     const { content } = req.body;
-    await query(`
-      INSERT INTO weekly_notes (user_id, week_start, content)
-      VALUES ($1,$2,$3)
-      ON CONFLICT (user_id, week_start) DO UPDATE SET content=$3, updated_at=NOW()
-    `, [req.user.id, req.params.weekStart, content || '']);
+    await query(`INSERT INTO weekly_notes (user_id, week_start, content) VALUES ($1,$2,$3) ON CONFLICT (user_id, week_start) DO UPDATE SET content=$3, updated_at=NOW()`,
+      [req.user.id, req.params.weekStart, content || '']);
     res.json({ message: 'Saved' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

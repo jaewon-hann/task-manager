@@ -100,7 +100,7 @@ async function sendMailToUser(user, htmlContent) {
   const settingsRes = await query('SELECT * FROM settings WHERE user_id=$1', [user.id]);
   const settings = settingsRes.rows[0] || {};
 
-  const mailTo   = settings.mail_to   || user.email;
+  const mailTo   = settings.mail_to || user.email;
   const mailFrom = process.env.GMAIL_FROM;
 
   if (!mailTo || !mailFrom) {
@@ -110,10 +110,7 @@ async function sendMailToUser(user, htmlContent) {
 
   const transporter = nodemailer.createTransport({
     service: 'gmail',
-    auth: {
-      user: mailFrom,
-      pass: process.env.GMAIL_APP_PASSWORD,
-    },
+    auth: { user: mailFrom, pass: process.env.GMAIL_APP_PASSWORD },
   });
 
   const todayStr = getKSTToday();
@@ -126,24 +123,25 @@ async function sendMailToUser(user, htmlContent) {
   console.log(`✅ ${user.name} → ${mailTo} 발송 완료`);
 }
 
-async function main() {
-  console.log('📋 전체 팀원 TDL 생성 중...');
-  const usersRes = await query(`SELECT u.* FROM users u WHERE u.is_active = true`, []);
+// 서버에서 require할 때는 아래 함수들만 export
+module.exports = { buildTDLContent, sendMailToUser };
 
-  for (const user of usersRes.rows) {
-    try {
-      console.log(`\n👤 ${user.name} 처리 중...`);
-      const html = await buildTDLContent(user.id);
-      await sendMailToUser(user, html);
-    } catch (e) {
-      console.error(`❌ ${user.name} 실패:`, e.message);
+// 직접 node로 실행할 때만 main() 실행
+if (require.main === module) {
+  async function main() {
+    console.log('📋 전체 팀원 TDL 생성 중...');
+    const usersRes = await query(`SELECT * FROM users WHERE is_active = true`, []);
+    for (const user of usersRes.rows) {
+      try {
+        console.log(`\n👤 ${user.name} 처리 중...`);
+        const html = await buildTDLContent(user.id);
+        await sendMailToUser(user, html);
+      } catch (e) {
+        console.error(`❌ ${user.name} 실패:`, e.message);
+      }
     }
+    console.log('\n✅ 전체 발송 완료');
+    process.exit(0);
   }
-  console.log('\n✅ 전체 발송 완료');
-  process.exit(0);
+  main().catch(err => { console.error('❌ 오류:', err.message); process.exit(1); });
 }
-
-main().catch(err => {
-  console.error('❌ 오류:', err.message);
-  process.exit(1);
-});
