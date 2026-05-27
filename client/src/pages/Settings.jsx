@@ -9,7 +9,6 @@ export default function Settings({ currentUser }) {
   const [mailError, setMailError] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // 비밀번호 변경
   const [pwForm, setPwForm] = useState({ current_password: '', new_password: '', confirm_password: '' });
   const [pwMsg, setPwMsg] = useState('');
   const [pwSaving, setPwSaving] = useState(false);
@@ -28,7 +27,10 @@ export default function Settings({ currentUser }) {
     setSending(true); setMailResult(null); setMailError('');
     try {
       await api.settings.save(settings);
-      const res = await fetch('/api/test-mail', { method: 'POST', headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } });
+      const res = await fetch('/api/test-mail', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
       const data = await res.json();
       if (res.ok) { setMailResult('ok'); setTimeout(() => setMailResult(null), 4000); }
       else { setMailResult('fail'); setMailError(data.error || '알 수 없는 오류'); }
@@ -84,12 +86,10 @@ export default function Settings({ currentUser }) {
                 value={pwForm.confirm_password} onChange={e => setPwForm(f => ({ ...f, confirm_password: e.target.value }))} />
             </div>
             {pwMsg && (
-              <div style={{
-                padding: '8px 12px', borderRadius: '6px', fontSize: '12px',
+              <div style={{ padding: '8px 12px', borderRadius: '6px', fontSize: '12px',
                 background: pwMsg.startsWith('✅') ? 'rgba(78,204,163,0.1)' : 'rgba(240,96,96,0.1)',
                 border: `1px solid ${pwMsg.startsWith('✅') ? 'rgba(78,204,163,0.3)' : 'rgba(240,96,96,0.3)'}`,
-                color: pwMsg.startsWith('✅') ? 'var(--teal)' : 'var(--danger)',
-              }}>{pwMsg}</div>
+                color: pwMsg.startsWith('✅') ? 'var(--teal)' : 'var(--danger)' }}>{pwMsg}</div>
             )}
             <button onClick={handlePasswordChange} disabled={pwSaving} style={{ padding: '9px 20px', borderRadius: '6px', background: 'var(--accent)', color: '#fff', border: 'none', fontSize: '13px', fontWeight: '700', cursor: 'pointer', alignSelf: 'flex-start', opacity: pwSaving ? 0.7 : 1 }}>
               {pwSaving ? '변경 중...' : '비밀번호 변경'}
@@ -100,6 +100,9 @@ export default function Settings({ currentUser }) {
         {/* 메일 설정 */}
         <div style={sectionStyle}>
           <div style={sectionTitle}>📧 메일 설정</div>
+          <div style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '16px', padding: '8px 12px', background: 'rgba(111,106,248,0.08)', borderRadius: '6px', border: '1px solid rgba(111,106,248,0.2)' }}>
+            💡 매일 아침 설정한 시각에 오늘 업무 요약 메일이 발송됩니다.
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div>
               <label style={labelStyle}>수신 이메일</label>
@@ -107,39 +110,9 @@ export default function Settings({ currentUser }) {
                 onChange={e => setSettings(s => ({ ...s, mail_to: e.target.value }))} />
             </div>
             <div>
-              <label style={labelStyle}>발신 Gmail 주소</label>
-              <input style={inputStyle} type="email" value={settings.mail_from} placeholder="Gmail 주소"
-                onChange={e => setSettings(s => ({ ...s, mail_from: e.target.value }))} />
-            </div>
-            <div>
               <label style={labelStyle}>발송 시각</label>
               <input style={{ ...inputStyle, width: '140px' }} type="time" value={settings.mail_time}
                 onChange={e => setSettings(s => ({ ...s, mail_time: e.target.value }))} />
-            </div>
-          </div>
-        </div>
-
-        {/* OpenAI API */}
-        <div style={sectionStyle}>
-          <div style={sectionTitle}>🤖 OpenAI API</div>
-          <div>
-            <label style={labelStyle}>OpenAI API Key</label>
-            <input style={inputStyle} type="password" placeholder="sk-..." />
-            <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '6px' }}>
-              <a href="https://ai-tools.myrealtrip.net/" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>https://ai-tools.myrealtrip.net/</a>에서 GPT API 키를 신청 후 입력해주세요.
-            </div>
-          </div>
-        </div>
-
-        {/* Gmail 앱 비밀번호 */}
-        <div style={sectionStyle}>
-          <div style={sectionTitle}>⚙ Gmail 앱 비밀번호</div>
-          <div>
-            <label style={labelStyle}>Gmail 앱 비밀번호 (16자리)</label>
-            <input style={inputStyle} type="password" placeholder="xxxx xxxx xxxx xxxx" />
-            <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '6px', lineHeight: '1.7' }}>
-              발급 방법: Google 계정 → 보안 → 2단계 인증 활성화 →{' '}
-              <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>앱 비밀번호</a> → 앱: 메일 → 기기: 기타 → 16자리 복사
             </div>
           </div>
         </div>
