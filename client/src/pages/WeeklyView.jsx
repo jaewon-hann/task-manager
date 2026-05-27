@@ -49,6 +49,9 @@ export default function WeeklyView() {
   const [eventModal, setEventModal] = useState(null);
   const [selected, setSelected]     = useState(null);
   const [expanded, setExpanded]     = useState({});
+  const [dragOver, setDragOver]     = useState(null);
+  const [dragging, setDragging]     = useState(null);
+  const [createDate, setCreateDate] = useState(null);
 
   const today = (() => { const d = new Date(); return new Date(d.getTime() + 9*60*60*1000).toISOString().slice(0,10); })();
 
@@ -82,12 +85,13 @@ export default function WeeklyView() {
     setLoading(true);
     try {
       const q = new URLSearchParams({ due_from: currentWeek.monStr, due_to: currentWeek.sunStr });
-      const [t, p, ev] = await Promise.all([
+      const [t, p, ev, allTasks] = await Promise.all([
         api.tasks.list('?' + q.toString()),
         api.projects.list(),
         api.events.list(`?from=${currentWeek.monStr}&to=${currentWeek.sunStr}`),
+        api.tasks.list(''),
       ]);
-      const noDate = (await api.tasks.list('?exclude_done=1')).filter(t => !t.due_date);
+      const noDate = allTasks.filter(t => !t.due_date && t.status !== 'done');
       const merged = [...t, ...noDate.filter(n => !t.find(x => x.id === n.id))];
       setTasks(merged);
       setProjects(p);
@@ -124,7 +128,19 @@ export default function WeeklyView() {
     setSelected(null);
   };
 
-  const [createDate, setCreateDate] = useState(null);
+  const isReadOnly = !!localStorage.getItem('targetUserId');
+
+  const handleDragStart = (e, task) => { setDragging(task); e.dataTransfer.effectAllowed = 'move'; };
+  const handleDragOver  = (e, dateStr) => { e.preventDefault(); setDragOver(dateStr); };
+  const handleDrop = async (e, dateStr) => {
+    e.preventDefault(); setDragOver(null);
+    if (!dragging) return;
+    const newDate = dateStr === 'nodate' ? null : dateStr;
+    if (dragging.due_date === newDate) return;
+    await api.tasks.update(dragging.id, { ...dragging, due_date: newDate });
+    setDragging(null); load();
+  };
+  const handleDragEnd = () => { setDragging(null); setDragOver(null); };
 
   const handleSave = async (data) => {
     if (modal === 'create') {
@@ -191,7 +207,14 @@ export default function WeeklyView() {
                 const visibleTasks = extraCount > 0 ? dayTasks.slice(0, 3) : dayTasks;
 
                 return (
-                  <div key={dateStr} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div key={dateStr}
+                    onDragOver={e => handleDragOver(e, dateStr)}
+                    onDrop={e => handleDrop(e, dateStr)}
+                    onDragLeave={() => setDragOver(null)}
+                    style={{ display: 'flex', flexDirection: 'column', gap: '4px', borderRadius: '8px', padding: '4px',
+                      background: dragOver === dateStr ? 'rgba(111,106,248,0.08)' : 'transparent',
+                      border: dragOver === dateStr ? '1px dashed var(--accent)' : '1px solid transparent',
+                      transition: 'all 0.1s' }}>
                     {/* 요일 헤더 - 클릭 시 해당 날짜로 업무 추가 */}
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '6px', cursor: 'pointer' }}
                       onClick={() => { setCreateDate(dateStr); setModal('create'); }}>
@@ -215,12 +238,16 @@ export default function WeeklyView() {
                     {/* 업무 바 */}
                     {visibleTasks.map(task => (
                       <div key={task.id}
+                        draggable={!isReadOnly}
+                        onDragStart={e => handleDragStart(e, task)}
+                        onDragEnd={handleDragEnd}
                         onClick={() => setSelected(selected?.task?.id === task.id ? null : { task, dateStr })}
                         style={{
                           padding: '5px 8px', borderRadius: '5px',
                           background: task.status === 'done' ? 'var(--surface2)' : `${getProjectColor(task)}22`,
                           borderLeft: `3px solid ${task.status === 'done' ? 'var(--border2)' : getProjectColor(task)}`,
-                          cursor: 'pointer', opacity: task.status === 'done' ? 0.5 : 1,
+                          cursor: isReadOnly ? 'pointer' : 'grab',
+                          opacity: task.status === 'done' ? 0.5 : dragging?.id === task.id ? 0.4 : 1,
                           outline: selected?.task?.id === task.id ? `2px solid ${getProjectColor(task)}` : 'none',
                           transition: 'all 0.1s',
                         }}>
@@ -286,19 +313,29 @@ export default function WeeklyView() {
         )}
 
         {/* 마감일 없는 업무 */}
-        {(grouped['nodate'] || []).length > 0 && (
-          <div style={{ marginTop: '16px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '14px 16px' }}>
-            <div style={{ fontSize: '13px', color: 'var(--text3)', marginBottom: '10px' }}>마감일 없는 업무 · {grouped['nodate'].length}건</div>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              {grouped['nodate'].map(task => (
-                <div key={task.id} onClick={() => setSelected(selected?.task?.id === task.id ? null : { task, dateStr: 'nodate' })}
+        <div onDragOver={e => handleDragOver(e, 'nodate')} onDrop={e => handleDrop(e, 'nodate')} onDragLeave={() => setDragOver(null)}
+          style={{ marginTop: '16px', background: dragOver === 'nodate' ? 'rgba(111,106,248,0.05)' : 'var(--surface)',
+            border: dragOver === 'nodate' ? '1px dashed var(--accent)' : '1px solid var(--border)',
+            borderRadius: 'var(--radius)', padding: '14px 16px', transition: 'all 0.1s', minHeight: '60px' }}>
+          <div style={{ fontSize: '13px', color: 'var(--text3)', marginBottom: (grouped['nodate'] || []).length > 0 ? '10px' : '0' }}>
+            마감일 없는 업무 · {(grouped['nodate'] || []).length}건
+            {dragging && <span style={{ color: 'var(--accent)', marginLeft: '8px', fontSize: '11px' }}>여기에 드롭하면 마감일이 제거됩니다</span>}
+          </div>
+          {(grouped['nodate'] || []).length > 0 && (
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {(grouped['nodate'] || []).map(task => (
+              <div key={task.id}
+                draggable={!isReadOnly}
+                onDragStart={e => handleDragStart(e, task)}
+                onDragEnd={handleDragEnd}
+                onClick={() => setSelected(selected?.task?.id === task.id ? null : { task, dateStr: 'nodate' })}
                   style={{ padding: '5px 10px', borderRadius: '5px', background: `${getProjectColor(task)}22`, borderLeft: `3px solid ${getProjectColor(task)}`, cursor: 'pointer', outline: selected?.task?.id === task.id ? `2px solid ${getProjectColor(task)}` : 'none' }}>
                   <div style={{ fontSize: '12px', color: 'var(--text)' }}>{task.title}</div>
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* 더보기 패널 */}
         {selected && selected.showAll && selected.tasks && (

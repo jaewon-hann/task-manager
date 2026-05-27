@@ -27,9 +27,15 @@ export default function CalendarView() {
     setLoading(true);
     const firstDay = new Date(year, month, 1).toISOString().slice(0, 10);
     const lastDay  = new Date(year, month + 1, 0).toISOString().slice(0, 10);
-    api.tasks.list(`?status=done&due_from=${firstDay}&due_to=${lastDay}`)
-      .then(setTasks)
-      .finally(() => setLoading(false));
+    // due_date 있는 완료 업무 + due_date 없는 완료 업무(updated_at 기준) 모두 가져옴
+    Promise.all([
+      api.tasks.list(`?status=done&due_from=${firstDay}&due_to=${lastDay}`),
+      api.tasks.list(`?status=done&created_from=${firstDay}`),
+    ]).then(([withDate, all]) => {
+      const noDueDate = all.filter(t => !t.due_date);
+      const merged = [...withDate, ...noDueDate.filter(n => !withDate.find(x => x.id === n.id))];
+      setTasks(merged);
+    }).finally(() => setLoading(false));
   }, [year, month]);
 
   const prevMonth = () => { if (month === 0) { setYear(y => y-1); setMonth(11); } else setMonth(m => m-1); setSelected(null); };
@@ -41,9 +47,11 @@ export default function CalendarView() {
 
   const tasksByDate = {};
   tasks.forEach(t => {
-    if (!t.due_date) return;
-    if (!tasksByDate[t.due_date]) tasksByDate[t.due_date] = [];
-    tasksByDate[t.due_date].push(t);
+    // due_date 없으면 updated_at(완료 처리된 날짜) 기준으로 표시
+    const dateKey = t.due_date || (t.updated_at ? t.updated_at.slice(0, 10) : null);
+    if (!dateKey) return;
+    if (!tasksByDate[dateKey]) tasksByDate[dateKey] = [];
+    tasksByDate[dateKey].push(t);
   });
 
   const monthStr = `${year}년 ${month + 1}월`;
