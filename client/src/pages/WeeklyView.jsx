@@ -300,6 +300,28 @@ export default function WeeklyView() {
           </div>
         )}
 
+        {/* 더보기 패널 */}
+        {selected && selected.showAll && selected.tasks && (
+          <div style={{ marginTop: '16px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '18px 20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div style={{ fontSize: '14px', fontWeight: '700' }}>전체 업무 ({selected.tasks.length}건)</div>
+              <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: '18px', cursor: 'pointer' }}>×</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {selected.tasks.map(task => (
+                <div key={task.id} onClick={() => setSelected({ task, dateStr: selected.dateStr })}
+                  style={{ padding: '10px 12px', borderRadius: '8px', cursor: 'pointer',
+                    background: task.status === 'done' ? 'var(--surface2)' : `${getProjectColor(task)}22`,
+                    borderLeft: `3px solid ${task.status === 'done' ? 'var(--border2)' : getProjectColor(task)}`,
+                    opacity: task.status === 'done' ? 0.6 : 1 }}>
+                  <div style={{ fontSize: '13px', color: task.status === 'done' ? 'var(--text3)' : 'var(--text)', textDecoration: task.status === 'done' ? 'line-through' : 'none' }}>{task.title}</div>
+                  {task.project_name && <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>{task.project_name}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* 업무 상세 패널 */}
         {selected && selected.task && (
           <div style={{ marginTop: '16px', background: 'var(--surface)', border: `1px solid ${getProjectColor(selected.task)}44`, borderRadius: 'var(--radius)', padding: '18px 20px' }}>
