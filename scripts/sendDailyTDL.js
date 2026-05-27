@@ -2,16 +2,20 @@ require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const nodemailer = require('nodemailer');
 const { query } = require('../server/db');
 
-async function buildTDLContent(userId) {
-  const today = new Date().toISOString().slice(0, 10);
+const getKSTToday = () => {
+  const d = new Date();
+  return new Date(d.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+};
 
+async function buildTDLContent(userId) {
+  const today = getKSTToday();
   const now = new Date();
   const day = now.getDay();
   const diffToMon = day === 0 ? -6 : 1 - day;
   const monday = new Date(now); monday.setDate(now.getDate() + diffToMon);
   const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
-  const mon = monday.toISOString().slice(0, 10);
-  const sun = sunday.toISOString().slice(0, 10);
+  const mon = new Date(monday.getTime() + 9*60*60*1000).toISOString().slice(0, 10);
+  const sun = new Date(sunday.getTime() + 9*60*60*1000).toISOString().slice(0, 10);
 
   const [todayRes, weekRes, overdueRes] = await Promise.all([
     query(`
@@ -36,9 +40,9 @@ async function buildTDLContent(userId) {
     `, [userId, today]),
   ]);
 
-  const todayTasks  = todayRes.rows;
-  const weekTasks   = weekRes.rows;
-  const overdue     = overdueRes.rows;
+  const todayTasks = todayRes.rows;
+  const weekTasks  = weekRes.rows;
+  const overdue    = overdueRes.rows;
 
   const priorityLabel = { high: '높음', medium: '중간', low: '낮음' };
   const taskToText = t =>
@@ -67,29 +71,27 @@ ${overdue.length ? overdue.map(taskToText).join('\n') : '없음'}
 7. 전체적으로 깔끔하고 읽기 쉬운 스타일로 만들어 주세요.
 8. HTML 코드 외에 어떤 텍스트도 포함하지 마세요.`;
 
-  const openaiKey = process.env.OPENAI_API_KEY;
-  if (!openaiKey) throw new Error('OPENAI_API_KEY 환경변수가 없습니다.');
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY 환경변수가 없습니다.');
 
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${openaiKey}`,
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'claude-sonnet-4-5',
       max_tokens: 2000,
-      messages: [
-        { role: 'system', content: 'You are an email generator. Return only valid HTML code, nothing else.' },
-        { role: 'user', content: prompt },
-      ],
+      messages: [{ role: 'user', content: prompt }],
     }),
   });
 
-  if (!res.ok) throw new Error(`OpenAI API 오류: ${await res.text()}`);
+  if (!res.ok) throw new Error(`Claude API 오류: ${await res.text()}`);
 
   const json = await res.json();
-  let html = json.choices[0].message.content;
+  let html = json.content[0].text;
   html = html.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
   return html;
 }
@@ -99,7 +101,7 @@ async function sendMailToUser(user, htmlContent) {
   const settings = settingsRes.rows[0] || {};
 
   const mailTo   = settings.mail_to   || user.email;
-  const mailFrom = settings.mail_from || process.env.GMAIL_FROM;
+  const mailFrom = process.env.GMAIL_FROM;
 
   if (!mailTo || !mailFrom) {
     console.log(`⏭ ${user.name}: 메일 설정 없음, 건너뜀`);
@@ -114,7 +116,7 @@ async function sendMailToUser(user, htmlContent) {
     },
   });
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = getKSTToday();
   await transporter.sendMail({
     from: mailFrom,
     to: mailTo,
@@ -126,10 +128,7 @@ async function sendMailToUser(user, htmlContent) {
 
 async function main() {
   console.log('📋 전체 팀원 TDL 생성 중...');
-  const usersRes = await query(
-    `SELECT u.* FROM users u WHERE u.is_active = true`,
-    []
-  );
+  const usersRes = await query(`SELECT u.* FROM users u WHERE u.is_active = true`, []);
 
   for (const user of usersRes.rows) {
     try {
