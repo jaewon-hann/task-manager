@@ -133,6 +133,120 @@ function TaskRow({ task }) {
   );
 }
 
+// ── 도넛 차트 컴포넌트 ────────────────────────────────────
+function DonutChart({ title, data, total, onNavigate }) {
+  const [hovered, setHovered] = useState(null);
+  const size = 160;
+  const cx = size / 2;
+  const cy = size / 2;
+  const r = 58;
+  const innerR = 36;
+
+  let cumAngle = -Math.PI / 2;
+  const slices = data.map(d => {
+    const angle = total > 0 ? (d.value / total) * 2 * Math.PI : 0;
+    const startAngle = cumAngle;
+    cumAngle += angle;
+    return { ...d, startAngle, endAngle: cumAngle };
+  });
+
+  const polarToXY = (angle, radius) => ({
+    x: cx + radius * Math.cos(angle),
+    y: cy + radius * Math.sin(angle),
+  });
+
+  const slicePath = (s) => {
+    if (s.value === 0) return '';
+    const start = polarToXY(s.startAngle, r);
+    const end   = polarToXY(s.endAngle, r);
+    const iStart = polarToXY(s.startAngle, innerR);
+    const iEnd   = polarToXY(s.endAngle, innerR);
+    const large  = s.endAngle - s.startAngle > Math.PI ? 1 : 0;
+    return `M ${start.x} ${start.y} A ${r} ${r} 0 ${large} 1 ${end.x} ${end.y} L ${iEnd.x} ${iEnd.y} A ${innerR} ${innerR} 0 ${large} 0 ${iStart.x} ${iStart.y} Z`;
+  };
+
+  const hoveredItem = hovered !== null ? data[hovered] : null;
+
+  return (
+    <div style={{ flex: 1, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '16px 20px' }}>
+      <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '12px', color: 'var(--text2)' }}>{title}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        {/* SVG 도넛 */}
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <svg width={size} height={size}>
+            {total === 0 ? (
+              <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--border2)" strokeWidth={r - innerR} />
+            ) : (
+              slices.map((s, i) => (
+                <path key={i} d={slicePath(s)}
+                  fill={s.value === 0 ? 'transparent' : s.color}
+                  opacity={hovered === null || hovered === i ? 1 : 0.4}
+                  style={{ cursor: 'pointer', transition: 'opacity 0.15s' }}
+                  onMouseEnter={() => setHovered(i)}
+                  onMouseLeave={() => setHovered(null)}
+                  onClick={() => onNavigate('tasks', { project_id: String(s.id) })}
+                />
+              ))
+            )}
+          </svg>
+          {/* 중앙 텍스트 */}
+          <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', textAlign: 'center', pointerEvents: 'none' }}>
+            {hoveredItem ? (
+              <>
+                <div style={{ fontSize: '16px', fontWeight: '700', color: hoveredItem.color }}>{hoveredItem.value}</div>
+                <div style={{ fontSize: '9px', color: 'var(--text3)', maxWidth: '60px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{hoveredItem.label}</div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text)' }}>{total}</div>
+                <div style={{ fontSize: '9px', color: 'var(--text3)' }}>전체</div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* 범례 */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0, flex: 1 }}>
+          {data.filter(d => d.value > 0).map((d, i) => (
+            <div key={i} onClick={() => onNavigate('tasks', { project_id: String(d.id) })}
+              style={{ display: 'flex', alignItems: 'center', gap: '7px', cursor: 'pointer', opacity: hovered === null || data.indexOf(d) === hovered ? 1 : 0.4, transition: 'opacity 0.15s' }}
+              onMouseEnter={() => setHovered(data.indexOf(d))}
+              onMouseLeave={() => setHovered(null)}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: d.color, flexShrink: 0 }} />
+              <div style={{ fontSize: '11px', color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{d.label}</div>
+              <div style={{ fontSize: '11px', color: 'var(--text3)', fontFamily: 'var(--mono)', flexShrink: 0 }}>{Math.round(d.value / total * 100)}%</div>
+            </div>
+          ))}
+          {total === 0 && <div style={{ fontSize: '12px', color: 'var(--text3)' }}>업무 없음</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DonutCharts({ projects, onNavigate }) {
+  // 전체 업무 (완료 포함)
+  const totalData = projects.map(p => ({
+    id: p.id, label: p.name, color: p.color || '#6f6af8',
+    value: parseInt(p.total_count) || 0,
+  }));
+  const totalSum = totalData.reduce((s, d) => s + d.value, 0);
+
+  // 진행 중 업무만
+  const inProgressData = projects.map(p => ({
+    id: p.id, label: p.name, color: p.color || '#6f6af8',
+    value: parseInt(p.in_progress_count) || 0,
+  }));
+  const inProgressSum = inProgressData.reduce((s, d) => s + d.value, 0);
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+      <DonutChart title="전체 업무 비중 (완료 포함)" data={totalData} total={totalSum} onNavigate={onNavigate} />
+      <DonutChart title="진행 중 업무 비중" data={inProgressData} total={inProgressSum} onNavigate={onNavigate} />
+    </div>
+  );
+}
+
 export default function Dashboard({ onNavigate }) {
   const [stats, setStats]         = useState({ total: 0, today: 0, in_progress: 0, overdue: 0 });
   const [todayTasks, setTodayTasks] = useState([]);
@@ -194,29 +308,9 @@ export default function Dashboard({ onNavigate }) {
           </div>
         </div>
 
-        {/* 4. 프로젝트별 현황 - 맨 아래 */}
+        {/* 4. 프로젝트별 비중 - 도넛 차트 */}
         {projects.filter(p => !p.archived).length > 0 && (
-          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '16px 20px' }}>
-            <div style={{ fontSize: '14px', fontWeight: '700', marginBottom: '14px' }}>프로젝트별 현황</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {projects.filter(p => !p.archived).map(p => {
-                const progressPct = p.total_count > 0 ? Math.round((p.in_progress_count / p.total_count) * 100) : 0;
-                return (
-                  <div key={p.id} style={{ cursor: 'pointer' }} onClick={() => onNavigate('tasks', { project_id: String(p.id) })}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', alignItems: 'center' }}>
-                      <span style={{ fontSize: '13px', color: 'var(--text)' }}>{p.name}</span>
-                      <span style={{ fontSize: '11px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>
-                        진행 중 {p.in_progress_count} / 전체 {p.total_count}건 ({progressPct}%) →
-                      </span>
-                    </div>
-                    <div style={{ height: '5px', background: 'var(--surface2)', borderRadius: '3px' }}>
-                      <div style={{ height: '5px', background: p.color || 'var(--accent)', borderRadius: '3px', width: `${progressPct}%`, minWidth: progressPct > 0 ? '5px' : '0', transition: 'width 0.5s' }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <DonutCharts projects={projects.filter(p => !p.archived)} onNavigate={onNavigate} />
         )}
       </div>
     </div>
