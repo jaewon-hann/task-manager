@@ -8,7 +8,7 @@ const STATUS_STYLE   = {
   in_progress: { bg: 'rgba(111,106,248,0.15)', color: 'var(--accent)' },
   done:        { bg: 'rgba(78,204,163,0.15)',  color: '#4ecca3' },
 };
-const PAGE_TITLE = { all: '전체 업무', today: '오늘 할 일', week: '이번 주', month: '이번 달', archive: '아카이브' };
+const PAGE_TITLE = { all: '전체 업무', today: '오늘 할 일', week: '이번 주', month: '이번 달' };
 
 const PERIOD_OPTIONS = [
   { value: '1', label: '최근 1개월' },
@@ -30,19 +30,37 @@ function renderMemo(text) {
 }
 
 export default function TaskList({ filter = 'all', params = {} }) {
-  const [tasks, setTasks]       = useState([]);
-  const [projects, setProjects] = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [modal, setModal]       = useState(null);
-  const [expanded, setExpanded] = useState({});
-  const [period, setPeriod]     = useState('1'); // 기본 1개월
-  const [filters, setFilters]   = useState({
+  const [tasks, setTasks]           = useState([]);
+  const [projects, setProjects]     = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [modal, setModal]           = useState(null);
+  const [expanded, setExpanded]     = useState({});
+  const [period, setPeriod]         = useState('1');
+  const [excludeDone, setExcludeDone] = useState(false);
+  const [projectMemo, setProjectMemo] = useState('');
+  const [filters, setFilters]       = useState({
     project_id: params.project_id || '',
-    priority:   '',
   });
   const [search, setSearch] = useState('');
 
+  const isReadOnly = !!localStorage.getItem('targetUserId');
   const today = (() => { const d = new Date(); return new Date(d.getTime() + 9*60*60*1000).toISOString().slice(0,10); })();
+
+  // params 변경시 filters 업데이트
+  useEffect(() => {
+    setFilters(f => ({ ...f, project_id: params.project_id || '' }));
+  }, [params.project_id]);
+
+  // 프로젝트 선택 시 메모 로드
+  useEffect(() => {
+    if (filters.project_id) {
+      // projects에서 해당 프로젝트 메모 표시 (나중에 project_memo 테이블 추가 가능)
+      const p = projects.find(p => String(p.id) === String(filters.project_id));
+      setProjectMemo(p?.memo || '');
+    } else {
+      setProjectMemo('');
+    }
+  }, [filters.project_id, projects]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,54 +73,41 @@ export default function TaskList({ filter = 'all', params = {} }) {
         taskPromise = api.tasks.week();
       } else if (filter === 'month') {
         taskPromise = api.tasks.month();
-      } else if (filter === 'archive') {
-        // 완료 업무만
-        const q = new URLSearchParams({ status: 'done' });
-        if (filters.project_id) q.set('project_id', filters.project_id);
-        if (period !== '0') {
-          const from = new Date();
-          from.setMonth(from.getMonth() - Number(period));
-          q.set('due_from', from.toISOString().slice(0, 10));
-        }
-        taskPromise = api.tasks.list('?' + q.toString());
       } else {
-        // 전체 업무 - 완료 제외, 기간 필터
+        // 전체 업무 - 완료된 프로젝트 포함, 완료 업무 토글로 제어
         const activeFilters = [];
         if (filters.project_id) activeFilters.push(['project_id', filters.project_id]);
-        if (filters.priority)   activeFilters.push(['priority', filters.priority]);
         if (params.status)      activeFilters.push(['status', params.status]);
         if (params.overdue)     activeFilters.push(['overdue', '1']);
-
-        // 완료 제외 (overdue나 status 필터 없을 때)
-        if (!params.status && !params.overdue) {
+        if (excludeDone && !params.status && !params.overdue) {
           activeFilters.push(['exclude_done', '1']);
         }
-
-        // 기간 필터
         if (period !== '0') {
           const from = new Date();
           from.setMonth(from.getMonth() - Number(period));
           activeFilters.push(['created_from', from.toISOString().slice(0, 10)]);
         }
-
         taskPromise = api.tasks.list('?' + new URLSearchParams(activeFilters).toString());
       }
 
-      const [t, p] = await Promise.all([taskPromise, api.projects.list()]);
+      // 완료된 프로젝트 포함해서 가져오기
+      const [t, p] = await Promise.all([
+        taskPromise,
+        api.projects.list(true), // includeArchived = true
+      ]);
       setTasks(t);
       setProjects(p);
     } finally {
       setLoading(false);
     }
-  }, [filter, filters, period, params.overdue, params.status]);
+  }, [filter, filters, period, excludeDone, params.overdue, params.status]);
 
   useEffect(() => { load(); }, [load]);
 
   const handleSave = async (data) => {
     if (modal === 'create') {
-      // 오늘 할 일 탭에서 추가하면 당일 날짜 자동 설정
       if (filter === 'today') {
-        data.due_date = (() => { const d = new Date(); return new Date(d.getTime() + 9*60*60*1000).toISOString().slice(0,10); })();
+        data.due_date = today;
       }
       await api.tasks.create(data);
     } else {
@@ -129,51 +134,78 @@ export default function TaskList({ filter = 'all', params = {} }) {
     !search || t.title.toLowerCase().includes(search.toLowerCase())
   );
 
-  const showPeriodFilter = filter === 'all' || filter === 'archive';
+  const selectedProject = filters.project_id
+    ? projects.find(p => String(p.id) === String(filters.project_id))
+    : null;
+
+  const showFilters = filter === 'all';
 
   return (
     <div>
       <div style={{ padding: '20px 28px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          <div style={{ fontSize: '20px', fontWeight: '700' }}>{PAGE_TITLE[filter]}</div>
-          {filter === 'archive' && (
-            <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>완료된 업무 모음</div>
-          )}
+          <div style={{ fontSize: '20px', fontWeight: '700' }}>{PAGE_TITLE[filter] || '전체 업무'}</div>
           {filter === 'all' && (
-            <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>완료 업무 제외 · 진행 중인 업무</div>
+            <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
+              {selectedProject ? `📁 ${selectedProject.name}` : '전체 프로젝트'}
+            </div>
           )}
         </div>
-        <button onClick={() => setModal('create')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: 'var(--radius-sm)', background: 'var(--accent)', color: '#fff', border: 'none', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
-          + 업무 추가
-        </button>
+        {!isReadOnly && (
+          <button onClick={() => setModal('create')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: 'var(--radius-sm)', background: 'var(--accent)', color: '#fff', border: 'none', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
+            + 업무 추가
+          </button>
+        )}
       </div>
 
-      {(filter === 'all' || filter === 'archive') && (
+      {showFilters && (
         <div style={{ padding: '12px 28px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
           <input placeholder="검색..." value={search} onChange={e => setSearch(e.target.value)}
             style={{ padding: '7px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border2)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '13px', width: '160px' }} />
+
           <select value={filters.project_id} onChange={e => setFilters(f => ({ ...f, project_id: e.target.value }))}
             style={{ padding: '7px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border2)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '13px' }}>
             <option value="">전체 프로젝트</option>
-            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {projects.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.name}{p.archived ? ' (완료됨)' : ''}
+              </option>
+            ))}
           </select>
-          {filter === 'all' && (
-            <select value={filters.priority} onChange={e => setFilters(f => ({ ...f, priority: e.target.value }))}
-              style={{ padding: '7px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border2)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '13px' }}>
-              <option value="">전체 우선순위</option>
-              <option value="high">높음</option>
-              <option value="medium">중간</option>
-              <option value="low">낮음</option>
-            </select>
-          )}
-          {showPeriodFilter && (
-            <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto' }}>
-              {PERIOD_OPTIONS.map(o => (
-                <button key={o.value} onClick={() => setPeriod(o.value)}
-                  style={{ padding: '6px 12px', borderRadius: '20px', border: period === o.value ? 'none' : '1px solid var(--border2)', background: period === o.value ? 'var(--accent)' : 'transparent', color: period === o.value ? '#fff' : 'var(--text3)', fontSize: '12px', cursor: 'pointer' }}>
-                  {o.label}
-                </button>
-              ))}
+
+          {/* 완료 업무 제외 토글 */}
+          <button onClick={() => setExcludeDone(v => !v)}
+            style={{ padding: '7px 14px', borderRadius: '20px', border: `1px solid ${excludeDone ? 'var(--accent)' : 'var(--border2)'}`, background: excludeDone ? 'rgba(111,106,248,0.15)' : 'transparent', color: excludeDone ? 'var(--accent)' : 'var(--text3)', fontSize: '12px', cursor: 'pointer', fontWeight: excludeDone ? '700' : '400', transition: 'all 0.15s' }}>
+            {excludeDone ? '✓ 완료 업무 제외 중' : '완료 업무 제외'}
+          </button>
+
+          <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto' }}>
+            {PERIOD_OPTIONS.map(o => (
+              <button key={o.value} onClick={() => setPeriod(o.value)}
+                style={{ padding: '6px 12px', borderRadius: '20px', border: period === o.value ? 'none' : '1px solid var(--border2)', background: period === o.value ? 'var(--accent)' : 'transparent', color: period === o.value ? '#fff' : 'var(--text3)', fontSize: '12px', cursor: 'pointer' }}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 프로젝트 메모 (B방식) */}
+      {selectedProject && (
+        <div style={{ padding: '12px 28px', borderBottom: '1px solid var(--border)', background: 'rgba(111,106,248,0.04)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: selectedProject.color || 'var(--accent)', flexShrink: 0 }} />
+            <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text)' }}>{selectedProject.name}</span>
+            {selectedProject.archived && (
+              <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '10px', background: 'rgba(78,204,163,0.15)', color: 'var(--teal)' }}>완료된 프로젝트</span>
+            )}
+            <span style={{ fontSize: '11px', color: 'var(--text3)', marginLeft: 'auto' }}>
+              전체 {selectedProject.total_count}건 · 진행중 {selectedProject.in_progress_count}건 · 완료 {selectedProject.done_count}건
+            </span>
+          </div>
+          {projectMemo && (
+            <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text2)', lineHeight: '1.7', whiteSpace: 'pre-wrap', paddingLeft: '20px' }}>
+              {projectMemo}
             </div>
           )}
         </div>
@@ -183,9 +215,7 @@ export default function TaskList({ filter = 'all', params = {} }) {
         {loading ? (
           <div style={{ color: 'var(--text3)', padding: '40px 0', textAlign: 'center' }}>로딩 중...</div>
         ) : filtered.length === 0 ? (
-          <div style={{ color: 'var(--text3)', padding: '40px 0', textAlign: 'center' }}>
-            {filter === 'archive' ? '완료된 업무가 없습니다' : '업무가 없습니다'}
-          </div>
+          <div style={{ color: 'var(--text3)', padding: '40px 0', textAlign: 'center' }}>업무가 없습니다</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {filtered.map(task => {
@@ -193,15 +223,13 @@ export default function TaskList({ filter = 'all', params = {} }) {
               const daysOverdue = isOverdue ? Math.floor((new Date(today) - new Date(task.due_date)) / 86400000) : 0;
               const ss = STATUS_STYLE[task.status] || STATUS_STYLE.todo;
               const isExpanded = expanded[task.id];
-
               const isDone = task.status === 'done';
 
               return (
                 <div key={task.id} style={{
                   background: isDone ? 'rgba(78,204,163,0.04)' : 'var(--surface)',
                   border: `1px solid ${isDone ? 'rgba(78,204,163,0.2)' : isOverdue ? 'rgba(240,96,96,0.3)' : 'var(--border)'}`,
-                  borderRadius: 'var(--radius)',
-                  opacity: isDone ? 0.8 : 1,
+                  borderRadius: 'var(--radius)', opacity: isDone ? 0.8 : 1,
                 }}>
                   <div style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', gap: '14px' }}>
                     <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: isDone ? '#4ecca3' : PRIORITY_COLOR[task.priority] || 'var(--text3)', flexShrink: 0 }} />
@@ -214,11 +242,11 @@ export default function TaskList({ filter = 'all', params = {} }) {
                       <div style={{ display: 'flex', gap: '10px', marginTop: '5px', flexWrap: 'wrap' }}>
                         {task.project_name && <span style={{ fontSize: '11px', color: 'var(--text3)' }}>📁 {task.project_name}</span>}
                         {task.category     && <span style={{ fontSize: '11px', color: 'var(--text3)' }}>🏷 {task.category}</span>}
-                        {task.due_date     && !isDone && <span style={{ fontSize: '11px', color: isOverdue ? 'var(--danger)' : 'var(--text3)', fontFamily: 'var(--mono)' }}>{isOverdue ? `⚠ ${daysOverdue}일 초과` : `📅 ${task.due_date}`}</span>}
+                        {task.due_date && !isDone && <span style={{ fontSize: '11px', color: isOverdue ? 'var(--danger)' : 'var(--text3)', fontFamily: 'var(--mono)' }}>{isOverdue ? `⚠ ${daysOverdue}일 초과` : `📅 ${task.due_date}`}</span>}
                         {isDone && <span style={{ fontSize: '11px', color: '#4ecca3' }}>✓ 완료</span>}
                       </div>
                     </div>
-                    {filter !== 'archive' && (
+                    {!isReadOnly && (
                       <select value={task.status} onChange={e => handleStatusChange(task, e.target.value)}
                         style={{ padding: '4px 10px', borderRadius: '20px', border: 'none', background: ss.bg, color: ss.color, fontSize: '12px', fontFamily: 'var(--sans)', cursor: 'pointer' }}>
                         <option value="todo">할 일</option>
@@ -226,11 +254,12 @@ export default function TaskList({ filter = 'all', params = {} }) {
                         <option value="done">완료</option>
                       </select>
                     )}
-                    {filter === 'archive' && (
-                      <span style={{ padding: '4px 10px', borderRadius: '20px', background: 'rgba(78,204,163,0.15)', color: '#4ecca3', fontSize: '12px' }}>완료</span>
+                    {!isReadOnly && (
+                      <>
+                        <button onClick={() => setModal(task)} style={{ background: 'var(--surface2)', border: '1px solid var(--border2)', borderRadius: 'var(--radius-sm)', padding: '5px 10px', color: 'var(--text2)', fontSize: '12px', cursor: 'pointer' }}>수정</button>
+                        <button onClick={() => handleDelete(task.id)} style={{ background: 'rgba(240,96,96,0.1)', border: '1px solid rgba(240,96,96,0.2)', borderRadius: 'var(--radius-sm)', padding: '5px 10px', color: 'var(--danger)', fontSize: '12px', cursor: 'pointer' }}>삭제</button>
+                      </>
                     )}
-                    <button onClick={() => setModal(task)} style={{ background: 'var(--surface2)', border: '1px solid var(--border2)', borderRadius: 'var(--radius-sm)', padding: '5px 10px', color: 'var(--text2)', fontSize: '12px', cursor: 'pointer' }}>수정</button>
-                    <button onClick={() => handleDelete(task.id)} style={{ background: 'rgba(240,96,96,0.1)', border: '1px solid rgba(240,96,96,0.2)', borderRadius: 'var(--radius-sm)', padding: '5px 10px', color: 'var(--danger)', fontSize: '12px', cursor: 'pointer' }}>삭제</button>
                   </div>
                   {isExpanded && task.memo && (
                     <div style={{ padding: '0 18px 14px 42px', fontSize: '13px', color: 'var(--text2)', lineHeight: '1.7', borderTop: '1px solid var(--border)', paddingTop: '12px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>

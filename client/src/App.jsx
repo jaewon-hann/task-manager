@@ -16,8 +16,6 @@ const NAV = [
   { id: 'today',     label: '오늘 할 일', icon: '◎' },
   { id: 'week',      label: '주차별',     icon: '□' },
   { id: 'month',     label: '이번 달',    icon: '◫' },
-  { id: 'archive',   label: '아카이브',   icon: '◻' },
-  { id: 'calendar',  label: '완료 캘린더', icon: '▤' },
   { id: 'projects',  label: '프로젝트',   icon: '◈' },
 ];
 
