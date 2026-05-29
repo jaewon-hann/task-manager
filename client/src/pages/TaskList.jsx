@@ -37,6 +37,7 @@ export default function TaskList({ filter = 'all', params = {} }) {
   const [expanded, setExpanded]     = useState({});
   const [period, setPeriod]         = useState('1');
   const [excludeDone, setExcludeDone] = useState(false);
+  const [projectMemo, setProjectMemo] = useState('');
   const [memoEditing, setMemoEditing] = useState(false);
   const [memoDraft, setMemoDraft]     = useState('');
   const [filters, setFilters]       = useState({
