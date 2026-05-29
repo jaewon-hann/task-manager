@@ -254,8 +254,8 @@ app.post('/api/projects', authMiddleware, async (req, res) => {
 app.put('/api/projects/:id', authMiddleware, async (req, res) => {
   try {
     if (isReadOnly(req)) return res.status(403).json({ error: '다른 팀원의 워크플레이스는 수정할 수 없습니다' });
-    const { name, color, archived, archived_at } = req.body;
-    await query('UPDATE projects SET name=$1,color=$2,archived=$3,archived_at=$4 WHERE id=$5 AND user_id=$6', [name,color,archived??false,archived_at||null,req.params.id,req.user.id]);
+    const { name, color, archived, archived_at, memo } = req.body;
+    await query('UPDATE projects SET name=$1,color=$2,archived=$3,archived_at=$4,memo=$5 WHERE id=$6 AND user_id=$7', [name,color,archived??false,archived_at||null,memo||null,req.params.id,req.user.id]);
     res.json({ message: 'Updated' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
