@@ -37,7 +37,8 @@ export default function TaskList({ filter = 'all', params = {} }) {
   const [expanded, setExpanded]     = useState({});
   const [period, setPeriod]         = useState('1');
   const [excludeDone, setExcludeDone] = useState(false);
-  const [projectMemo, setProjectMemo] = useState('');
+  const [memoEditing, setMemoEditing] = useState(false);
+  const [memoDraft, setMemoDraft]     = useState('');
   const [filters, setFilters]       = useState({
     project_id: params.project_id || '',
   });
@@ -54,13 +55,25 @@ export default function TaskList({ filter = 'all', params = {} }) {
   // 프로젝트 선택 시 메모 로드
   useEffect(() => {
     if (filters.project_id) {
-      // projects에서 해당 프로젝트 메모 표시 (나중에 project_memo 테이블 추가 가능)
       const p = projects.find(p => String(p.id) === String(filters.project_id));
       setProjectMemo(p?.memo || '');
     } else {
       setProjectMemo('');
     }
+    setMemoEditing(false);
   }, [filters.project_id, projects]);
+
+  const handleMemoSave = async () => {
+    if (!selectedProject) return;
+    await api.projects.update(selectedProject.id, {
+      name: selectedProject.name,
+      color: selectedProject.color,
+      memo: memoDraft,
+    });
+    setProjectMemo(memoDraft);
+    setMemoEditing(false);
+    load();
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -202,12 +215,29 @@ export default function TaskList({ filter = 'all', params = {} }) {
             <span style={{ fontSize: '11px', color: 'var(--text3)', marginLeft: 'auto' }}>
               전체 {selectedProject.total_count}건 · 진행중 {selectedProject.in_progress_count}건 · 완료 {selectedProject.done_count}건
             </span>
+            {!isReadOnly && !memoEditing && (
+              <button onClick={() => { setMemoDraft(projectMemo); setMemoEditing(true); }}
+                style={{ fontSize: '11px', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}>
+                {projectMemo ? '메모 편집' : '+ 메모'}
+              </button>
+            )}
+            {memoEditing && (
+              <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                <button onClick={handleMemoSave} style={{ fontSize: '11px', color: '#fff', background: 'var(--accent)', border: 'none', borderRadius: '5px', padding: '3px 10px', cursor: 'pointer' }}>저장</button>
+                <button onClick={() => setMemoEditing(false)} style={{ fontSize: '11px', color: 'var(--text2)', background: 'none', border: '1px solid var(--border2)', borderRadius: '5px', padding: '3px 10px', cursor: 'pointer' }}>취소</button>
+              </div>
+            )}
           </div>
-          {projectMemo && (
-            <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text2)', lineHeight: '1.7', whiteSpace: 'pre-wrap', paddingLeft: '20px' }}>
+          {memoEditing ? (
+            <textarea autoFocus value={memoDraft} onChange={e => setMemoDraft(e.target.value)}
+              placeholder="프로젝트 메모, 목표, 링크 등을 자유롭게 작성하세요..."
+              style={{ marginTop: '8px', width: '100%', minHeight: '70px', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border2)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', resize: 'vertical', lineHeight: '1.7', fontFamily: 'var(--sans)' }} />
+          ) : projectMemo ? (
+            <div onClick={() => { if (!isReadOnly) { setMemoDraft(projectMemo); setMemoEditing(true); } }}
+              style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text2)', lineHeight: '1.7', whiteSpace: 'pre-wrap', paddingLeft: '20px', cursor: isReadOnly ? 'default' : 'pointer' }}>
               {projectMemo}
             </div>
-          )}
+          ) : null}
         </div>
       )}
 
