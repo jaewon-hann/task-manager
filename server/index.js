@@ -418,6 +418,8 @@ app.put('/api/weekly-notes/:weekStart', authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../client/dist/index.html'));
 });
