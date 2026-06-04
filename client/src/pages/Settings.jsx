@@ -38,6 +38,15 @@ export default function Settings({ currentUser }) {
     finally { setSending(false); }
   };
 
+  const handleTestWeeklyReport = async () => {
+    await api.settings.save(settings);
+    await fetch('/api/test-weekly-report', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    });
+    alert('주간 리포트 발송 시작! 잠시 후 메일을 확인해주세요.');
+  };
+
   const handlePasswordChange = async () => {
     if (!pwForm.current_password || !pwForm.new_password) { setPwMsg('❌ 모든 항목을 입력해주세요'); return; }
     if (pwForm.new_password !== pwForm.confirm_password) { setPwMsg('❌ 새 비밀번호가 일치하지 않습니다'); return; }
@@ -106,8 +115,11 @@ export default function Settings({ currentUser }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div>
               <label style={labelStyle}>수신 이메일</label>
-              <input style={inputStyle} type="email" value={settings.mail_to} placeholder="받을 이메일 주소"
+              <input style={inputStyle} type="text" value={settings.mail_to} placeholder="이메일 주소 (여러 명은 콤마로 구분: a@b.com, c@d.com)"
                 onChange={e => setSettings(s => ({ ...s, mail_to: e.target.value }))} />
+              <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '5px' }}>
+                💡 팀장 등 추가 수신자는 콤마(,)로 구분해서 입력하세요
+              </div>
             </div>
             <div>
               <label style={labelStyle}>발송 시각</label>
@@ -123,6 +135,9 @@ export default function Settings({ currentUser }) {
           </button>
           <button onClick={handleTestMail} disabled={sending} style={{ padding: '10px 28px', borderRadius: '8px', background: mailResult==='ok' ? '#4ecca3' : mailResult==='fail' ? 'var(--danger)' : 'var(--surface2)', color: mailResult ? '#fff' : 'var(--text2)', border: '1px solid var(--border2)', fontSize: '14px', fontWeight: '700', cursor: sending ? 'not-allowed' : 'pointer', opacity: sending ? 0.7 : 1, transition: 'background 0.3s' }}>
             {sending ? '발송 중...' : mailResult==='ok' ? '✓ 발송 완료!' : mailResult==='fail' ? '✗ 발송 실패' : '📧 테스트 메일 발송'}
+          </button>
+          <button onClick={handleTestWeeklyReport} style={{ padding: '10px 28px', borderRadius: '8px', background: 'var(--surface2)', color: 'var(--text2)', border: '1px solid var(--border2)', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
+            📊 주간 리포트 테스트
           </button>
           {mailResult==='fail' && mailError && (
             <div style={{ fontSize: '12px', color: 'var(--danger)', marginTop: '4px', width: '100%' }}>오류: {mailError}</div>

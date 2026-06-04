@@ -355,6 +355,42 @@ app.get('/api/stats', authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── 주간 리포트 발송 (cron-job.org에서 호출 - 매주 월요일) ──
+app.post('/api/send-weekly-report', async (req, res) => {
+  const secret = req.headers['x-cron-secret'];
+  if (secret !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
+  res.json({ message: 'started' });
+  (async () => {
+    try {
+      const { buildWeeklyReport, sendWeeklyReportToUser } = require('../scripts/sendWeeklyReport.js');
+      const usersRes = await query('SELECT * FROM users WHERE is_active=true', []);
+      for (const user of usersRes.rows) {
+        try {
+          const html = await buildWeeklyReport(user.id, user.name);
+          await sendWeeklyReportToUser(user, html);
+        } catch(e) { console.error(`❌ ${user.name} 실패:`, e.message); }
+      }
+      console.log('✅ 주간 리포트 발송 완료');
+    } catch(e) { console.error('❌ 주간 리포트 오류:', e.message); }
+  })();
+});
+
+// ── 테스트 주간 리포트 (본인에게만) ───────────────────────────
+app.post('/api/test-weekly-report', authMiddleware, async (req, res) => {
+  res.json({ message: 'ok' });
+  setImmediate(async () => {
+    try {
+      const { buildWeeklyReport, sendWeeklyReportToUser } = require('../scripts/sendWeeklyReport.js');
+      const userRes = await query('SELECT * FROM users WHERE id=$1', [req.user.id]);
+      const user = userRes.rows[0];
+      console.log(`📋 ${user.name} 주간 리포트 생성 중...`);
+      const html = await buildWeeklyReport(user.id, user.name);
+      await sendWeeklyReportToUser(user, html);
+      console.log(`✅ 테스트 주간 리포트 발송 완료: ${user.name}`);
+    } catch(e) { console.error('❌ 테스트 주간 리포트 실패:', e.message); }
+  });
+});
+
 // ── 자동 메일 발송 (cron-job.org에서 호출) ───────────────
 app.post('/api/send-daily-mail', async (req, res) => {
   const secret = req.headers['x-cron-secret'];
