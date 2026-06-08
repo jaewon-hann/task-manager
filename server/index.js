@@ -155,12 +155,7 @@ app.get('/api/tasks/today', authMiddleware, async (req, res) => {
     const todayStr = today();
     const result = await query(`
       SELECT t.*,p.name AS project_name FROM tasks t LEFT JOIN projects p ON p.id=t.project_id
-      WHERE t.user_id=$1 AND (
-        t.due_date=$2
-        OR (t.due_date IS NULL AND t.status!='done')
-        OR (t.status='done' AND t.updated_at::date=$2::date)
-        OR t.status='active'
-      )
+      WHERE t.user_id=$1 AND (t.due_date=$2 OR (t.due_date IS NULL AND t.status!='done') OR (t.status='done' AND t.updated_at::date=$2::date))
       ORDER BY CASE WHEN t.status='done' THEN 1 ELSE 0 END, CASE t.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END
     `, [userId, todayStr]);
     res.json(result.rows);
@@ -175,7 +170,7 @@ app.get('/api/tasks/week', authMiddleware, async (req, res) => {
     const mon=monday.toISOString().slice(0,10); const sun=sunday.toISOString().slice(0,10);
     const result = await query(`
       SELECT t.*,p.name AS project_name FROM tasks t LEFT JOIN projects p ON p.id=t.project_id
-      WHERE t.user_id=$1 AND t.status!='done' AND ((t.due_date>=$2 AND t.due_date<=$3) OR t.due_date IS NULL OR t.status='active')
+      WHERE t.user_id=$1 AND t.status!='done' AND ((t.due_date>=$2 AND t.due_date<=$3) OR t.due_date IS NULL OR t.status='in_progress')
       ORDER BY t.due_date ASC NULLS LAST, CASE t.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END
     `, [userId, mon, sun]);
     res.json(result.rows);
@@ -190,7 +185,7 @@ app.get('/api/tasks/month', authMiddleware, async (req, res) => {
     const lastDay=new Date(n.getFullYear(),n.getMonth()+1,0).toISOString().slice(0,10);
     const result = await query(`
       SELECT t.*,p.name AS project_name FROM tasks t LEFT JOIN projects p ON p.id=t.project_id
-      WHERE t.user_id=$1 AND t.status!='done' AND ((t.due_date>=$2 AND t.due_date<=$3) OR t.due_date IS NULL OR t.status='active')
+      WHERE t.user_id=$1 AND t.status!='done' AND ((t.due_date>=$2 AND t.due_date<=$3) OR t.due_date IS NULL OR t.status='in_progress')
       ORDER BY t.due_date ASC NULLS LAST, CASE t.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END
     `, [userId, firstDay, lastDay]);
     res.json(result.rows);
@@ -241,7 +236,7 @@ app.get('/api/projects', authMiddleware, async (req, res) => {
   try {
     const userId = getTargetUserId(req);
     const includeArchived = req.query.includeArchived==='true';
-    const sql = `SELECT p.*,COUNT(t.id) FILTER (WHERE t.status!='done') AS task_count,COUNT(t.id) FILTER (WHERE t.status='active') AS in_progress_count,COUNT(t.id) AS total_count,COUNT(t.id) FILTER (WHERE t.status='done') AS done_count FROM projects p LEFT JOIN tasks t ON t.project_id=p.id WHERE p.user_id=$1 ${!includeArchived?"AND p.archived=false":""} GROUP BY p.id ORDER BY p.created_at ASC`;
+    const sql = `SELECT p.*,COUNT(t.id) FILTER (WHERE t.status!='done') AS task_count,COUNT(t.id) FILTER (WHERE t.status='in_progress') AS in_progress_count,COUNT(t.id) AS total_count,COUNT(t.id) FILTER (WHERE t.status='done') AS done_count FROM projects p LEFT JOIN tasks t ON t.project_id=p.id WHERE p.user_id=$1 ${!includeArchived?"AND p.archived=false":""} GROUP BY p.id ORDER BY p.created_at ASC`;
     res.json((await query(sql, [userId])).rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -259,8 +254,8 @@ app.post('/api/projects', authMiddleware, async (req, res) => {
 app.put('/api/projects/:id', authMiddleware, async (req, res) => {
   try {
     if (isReadOnly(req)) return res.status(403).json({ error: '다른 팀원의 워크플레이스는 수정할 수 없습니다' });
-    const { name, color, archived, archived_at } = req.body;
-    await query('UPDATE projects SET name=$1,color=$2,archived=$3,archived_at=$4 WHERE id=$5 AND user_id=$6', [name,color,archived??false,archived_at||null,req.params.id,req.user.id]);
+    const { name, color, archived, archived_at, memo } = req.body;
+    await query('UPDATE projects SET name=$1,color=$2,archived=$3,archived_at=$4,memo=$5 WHERE id=$6 AND user_id=$7', [name,color,archived??false,archived_at||null,memo||null,req.params.id,req.user.id]);
     res.json({ message: 'Updated' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -350,7 +345,7 @@ app.get('/api/stats', authMiddleware, async (req, res) => {
     const userId=getTargetUserId(req); const todayStr=today();
     const result=await query(`SELECT
       COUNT(*) FILTER (WHERE status!='done') AS total,
-      COUNT(*) FILTER (WHERE status='active') AS in_progress,
+      COUNT(*) FILTER (WHERE status='in_progress') AS in_progress,
       COUNT(*) FILTER (WHERE status!='done' AND (due_date IS NULL OR due_date=$2)) AS today,
       COUNT(*) FILTER (WHERE due_date<$2 AND status!='done') AS overdue
       FROM tasks WHERE user_id=$1`,
@@ -360,15 +355,83 @@ app.get('/api/stats', authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── 주간 리포트 발송 (cron-job.org에서 호출 - 매주 월요일) ──
+app.post('/api/send-weekly-report', async (req, res) => {
+  const secret = req.headers['x-cron-secret'];
+  if (secret !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
+  res.json({ message: 'started' });
+  (async () => {
+    try {
+      const { buildWeeklyReport, sendWeeklyReportToUser } = require('../scripts/sendWeeklyReport.js');
+      const usersRes = await query('SELECT * FROM users WHERE is_active=true', []);
+      for (const user of usersRes.rows) {
+        try {
+          const html = await buildWeeklyReport(user.id, user.name);
+          await sendWeeklyReportToUser(user, html);
+        } catch(e) { console.error(`❌ ${user.name} 실패:`, e.message); }
+      }
+      console.log('✅ 주간 리포트 발송 완료');
+    } catch(e) { console.error('❌ 주간 리포트 오류:', e.message); }
+  })();
+});
+
+// ── 테스트 주간 리포트 (본인에게만) ───────────────────────────
+app.post('/api/test-weekly-report', authMiddleware, async (req, res) => {
+  res.json({ message: 'ok' });
+  setImmediate(async () => {
+    try {
+      const { buildWeeklyReport, sendWeeklyReportToUser } = require('../scripts/sendWeeklyReport.js');
+      const userRes = await query('SELECT * FROM users WHERE id=$1', [req.user.id]);
+      const user = userRes.rows[0];
+      console.log(`📋 ${user.name} 주간 리포트 생성 중...`);
+      const html = await buildWeeklyReport(user.id, user.name);
+      await sendWeeklyReportToUser(user, html);
+      console.log(`✅ 테스트 주간 리포트 발송 완료: ${user.name}`);
+    } catch(e) { console.error('❌ 테스트 주간 리포트 실패:', e.message); }
+  });
+});
+
+// ── 자동 메일 발송 (cron-job.org에서 호출) ───────────────
+app.post('/api/send-daily-mail', async (req, res) => {
+  const secret = req.headers['x-cron-secret'];
+  if (secret !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
+  res.json({ message: 'started' });
+  (async () => {
+    try {
+      const { buildTDLContent, sendMailToUser } = require('../scripts/sendDailyTDL.js');
+      const usersRes = await query('SELECT * FROM users WHERE is_active=true', []);
+      for (const user of usersRes.rows) {
+        try {
+          const html = await buildTDLContent(user.id);
+          await sendMailToUser(user, html);
+        } catch (e) { console.error(`❌ ${user.name} 실패:`, e.message); }
+      }
+      console.log('✅ 전체 메일 발송 완료');
+    } catch (e) { console.error('❌ 메일 발송 오류:', e.message); }
+  })();
+});
+
+// ── 테스트 메일 (본인에게만) ───────────────────────────────
 app.post('/api/test-mail', authMiddleware, async (req, res) => {
-  try {
-    const { buildTDLContent, sendMailToUser } = require('../scripts/sendDailyTDL.js');
-    const userRes = await query('SELECT * FROM users WHERE id=$1', [req.user.id]);
-    const user = userRes.rows[0];
-    const html = await buildTDLContent(user.id);
-    await sendMailToUser(user, html);
-    res.json({ message: 'ok' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  console.log('📧 테스트 메일 요청 받음:', req.user.name);
+  res.json({ message: 'ok' });
+  setImmediate(async () => {
+    try {
+      console.log('📧 메일 생성 시작...');
+      const { buildTDLContent, sendMailToUser } = require('../scripts/sendDailyTDL.js');
+      console.log('📧 DB에서 유저 조회 중...');
+      const userRes = await query('SELECT * FROM users WHERE id=$1', [req.user.id]);
+      const user = userRes.rows[0];
+      console.log(`📧 ${user.name} TDL 생성 중...`);
+      const html = await buildTDLContent(user.id);
+      console.log(`📧 메일 발송 중...`);
+      await sendMailToUser(user, html);
+      console.log(`✅ 테스트 메일 발송 완료: ${user.name}`);
+    } catch (e) {
+      console.error('❌ 테스트 메일 실패:', e.message);
+      console.error(e.stack);
+    }
+  });
 });
 
 
@@ -389,73 +452,6 @@ app.put('/api/weekly-notes/:weekStart', authMiddleware, async (req, res) => {
       [req.user.id, req.params.weekStart, content || '']);
     res.json({ message: 'Saved' });
   } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ── 주간 리포트 발송 ────────────────────────────────────────
-app.post('/api/send-weekly-report', async (req, res) => {
-  const secret = req.headers['x-cron-secret'];
-  if (secret !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
-  res.json({ message: 'started' });
-  (async () => {
-    try {
-      const { buildWeeklyReport, sendWeeklyReportToUser } = require('../scripts/sendWeeklyReport.js');
-      const usersRes = await query('SELECT * FROM users WHERE is_active=true', []);
-      for (const user of usersRes.rows) {
-        try {
-          const html = await buildWeeklyReport(user.id, user.name);
-          await sendWeeklyReportToUser(user, html);
-        } catch(e) { console.error(`❌ ${user.name} 실패:`, e.message); }
-      }
-    } catch(e) { console.error('❌ 주간 리포트 오류:', e.message); }
-  })();
-});
-
-app.post('/api/test-weekly-report', authMiddleware, async (req, res) => {
-  res.json({ message: 'ok' });
-  setImmediate(async () => {
-    try {
-      const { buildWeeklyReport, sendWeeklyReportToUser } = require('../scripts/sendWeeklyReport.js');
-      const userRes = await query('SELECT * FROM users WHERE id=$1', [req.user.id]);
-      const user = userRes.rows[0];
-      const html = await buildWeeklyReport(user.id, user.name);
-      await sendWeeklyReportToUser(user, html);
-      console.log(`✅ 테스트 주간 리포트 발송 완료: ${user.name}`);
-    } catch(e) { console.error('❌ 테스트 주간 리포트 실패:', e.message); }
-  });
-});
-
-// ── 자동 데일리 메일 (cron-job.org) ───────────────────────
-app.post('/api/send-daily-mail', async (req, res) => {
-  const secret = req.headers['x-cron-secret'];
-  if (secret !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
-  res.json({ message: 'started' });
-  (async () => {
-    try {
-      const { buildTDLContent, sendMailToUser } = require('../scripts/sendDailyTDL.js');
-      const usersRes = await query('SELECT * FROM users WHERE is_active=true', []);
-      for (const user of usersRes.rows) {
-        try {
-          const html = await buildTDLContent(user.id, user.name);
-          await sendMailToUser(user, html);
-        } catch(e) { console.error(`❌ ${user.name} 실패:`, e.message); }
-      }
-    } catch(e) { console.error('❌ 메일 발송 오류:', e.message); }
-  })();
-});
-
-app.post('/api/test-mail', authMiddleware, async (req, res) => {
-  console.log('📧 테스트 메일 요청 받음:', req.user.name);
-  res.json({ message: 'ok' });
-  setImmediate(async () => {
-    try {
-      const { buildTDLContent, sendMailToUser } = require('../scripts/sendDailyTDL.js');
-      const userRes = await query('SELECT * FROM users WHERE id=$1', [req.user.id]);
-      const user = userRes.rows[0];
-      const html = await buildTDLContent(user.id, user.name);
-      await sendMailToUser(user, html);
-      console.log(`✅ 테스트 메일 발송 완료: ${user.name}`);
-    } catch(e) { console.error('❌ 테스트 메일 실패:', e.message); console.error(e.stack); }
-  });
 });
 
 app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));

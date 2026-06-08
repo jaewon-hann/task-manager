@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { api } from '../api.js';
 import TaskModal from '../components/TaskModal.jsx';
 import EventModal from '../components/EventModal.jsx';
@@ -7,12 +7,12 @@ const PRIORITY_COLOR = { high: '#f06060', medium: '#f7c843', low: '#4ecca3' };
 const PROJECT_COLORS = ['#6f6af8','#4ecca3','#f7c843','#f06060','#e879f9','#38bdf8','#fb923c','#a3e635'];
 const STATUS_STYLE = {
   todo:        { bg: 'var(--surface2)',        color: 'var(--text3)' },
-  active: { bg: 'rgba(111,106,248,0.15)', color: 'var(--accent)' },
+  in_progress: { bg: 'rgba(111,106,248,0.15)', color: 'var(--accent)' },
   done:        { bg: 'rgba(78,204,163,0.15)',  color: '#4ecca3' },
 };
 const DAY_LABEL = ['월', '화', '수', '목', '금', '토', '일'];
 
-
+// ── 위클리 노트 컴포넌트 ───────────────────────────────────
 function WeeklyNote({ weekStart, readOnly }) {
   const [content, setContent] = useState('');
   const [editing, setEditing] = useState(false);
@@ -26,7 +26,11 @@ function WeeklyNote({ weekStart, readOnly }) {
 
   const handleSave = async () => {
     setSaving(true);
-    try { await api.weeklyNotes.save(weekStart, draft); setContent(draft); setEditing(false); } catch(e) {}
+    try {
+      await api.weeklyNotes.save(weekStart, draft);
+      setContent(draft);
+      setEditing(false);
+    } catch(e) {}
     setSaving(false);
   };
 
@@ -34,7 +38,9 @@ function WeeklyNote({ weekStart, readOnly }) {
     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', marginBottom: '16px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
         <div style={{ fontSize: '14px', fontWeight: '700' }}>📝 이번 주 메모</div>
-        {!readOnly && !editing && <button onClick={() => { setDraft(content); setEditing(true); }} style={{ padding: '4px 12px', borderRadius: '6px', fontSize: '12px', background: 'var(--surface2)', border: '1px solid var(--border2)', color: 'var(--text2)', cursor: 'pointer' }}>편집</button>}
+        {!readOnly && !editing && (
+          <button onClick={() => { setDraft(content); setEditing(true); }} style={{ padding: '4px 12px', borderRadius: '6px', fontSize: '12px', background: 'var(--surface2)', border: '1px solid var(--border2)', color: 'var(--text2)', cursor: 'pointer' }}>편집</button>
+        )}
         {editing && (
           <div style={{ display: 'flex', gap: '8px' }}>
             <button onClick={handleSave} disabled={saving} style={{ padding: '4px 12px', borderRadius: '6px', fontSize: '12px', background: 'var(--accent)', border: 'none', color: '#fff', cursor: 'pointer' }}>{saving ? '저장 중...' : '저장'}</button>
@@ -43,12 +49,17 @@ function WeeklyNote({ weekStart, readOnly }) {
         )}
       </div>
       {editing ? (
-        <textarea autoFocus value={draft} onChange={e => setDraft(e.target.value)} placeholder="이번 주 계획, 목표, 메모를 자유롭게 작성하세요..."
+        <textarea autoFocus value={draft} onChange={e => setDraft(e.target.value)}
+          placeholder="이번 주 계획, 목표, 메모를 자유롭게 작성하세요..."
           style={{ width: '100%', minHeight: '100px', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border2)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '13px', resize: 'vertical', lineHeight: '1.7', fontFamily: 'var(--sans)' }} />
       ) : content ? (
-        <div onClick={() => { if (!readOnly) { setDraft(content); setEditing(true); } }} style={{ fontSize: '13px', color: 'var(--text2)', lineHeight: '1.7', whiteSpace: 'pre-wrap', wordBreak: 'break-word', cursor: readOnly ? 'default' : 'pointer', minHeight: '40px' }}>{content}</div>
+        <div onClick={() => { if (!readOnly) { setDraft(content); setEditing(true); } }}
+          style={{ fontSize: '13px', color: 'var(--text2)', lineHeight: '1.7', whiteSpace: 'pre-wrap', wordBreak: 'break-word', cursor: readOnly ? 'default' : 'pointer', minHeight: '40px' }}>
+          {content}
+        </div>
       ) : (
-        <div onClick={() => { if (!readOnly) { setDraft(''); setEditing(true); } }} style={{ fontSize: '13px', color: 'var(--text3)', cursor: readOnly ? 'default' : 'pointer', minHeight: '40px', fontStyle: 'italic' }}>
+        <div onClick={() => { if (!readOnly) { setDraft(''); setEditing(true); } }}
+          style={{ fontSize: '13px', color: 'var(--text3)', cursor: readOnly ? 'default' : 'pointer', minHeight: '40px', fontStyle: 'italic' }}>
           {readOnly ? '작성된 메모가 없습니다.' : '클릭해서 이번 주 메모를 작성하세요...'}
         </div>
       )}
@@ -57,12 +68,13 @@ function WeeklyNote({ weekStart, readOnly }) {
 }
 
 function getMondayOf(date) {
-  const d = new Date(date);
-  const day = d.getDay();
+  // KST 기준으로 날짜 계산
+  const kst = new Date(new Date(date).getTime() + 9*60*60*1000);
+  const day = kst.getUTCDay();
   const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  d.setHours(0, 0, 0, 0);
-  return d;
+  kst.setUTCDate(kst.getUTCDate() + diff);
+  kst.setUTCHours(0, 0, 0, 0);
+  return kst;
 }
 
 function getWeekLabel(monday) {
@@ -92,8 +104,11 @@ export default function WeeklyView() {
   const [eventModal, setEventModal] = useState(null);
   const [selected, setSelected]     = useState(null);
   const [expanded, setExpanded]     = useState({});
+  const [dragOver, setDragOver]     = useState(null);
+  const [dragging, setDragging]     = useState(null);
+  const [createDate, setCreateDate] = useState(null);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = (() => { const d = new Date(); return new Date(d.getTime() + 9*60*60*1000).toISOString().slice(0,10); })();
 
   const weeks = Array.from({ length: 9 }, (_, i) => {
     const offset = i - 4;
@@ -125,12 +140,13 @@ export default function WeeklyView() {
     setLoading(true);
     try {
       const q = new URLSearchParams({ due_from: currentWeek.monStr, due_to: currentWeek.sunStr });
-      const [t, p, ev] = await Promise.all([
+      const [t, p, ev, allTasks] = await Promise.all([
         api.tasks.list('?' + q.toString()),
         api.projects.list(),
         api.events.list(`?from=${currentWeek.monStr}&to=${currentWeek.sunStr}`),
+        api.tasks.list(''),
       ]);
-      const noDate = (await api.tasks.list('?exclude_done=1')).filter(t => !t.due_date);
+      const noDate = allTasks.filter(t => !t.due_date && t.status !== 'done');
       const merged = [...t, ...noDate.filter(n => !t.find(x => x.id === n.id))];
       setTasks(merged);
       setProjects(p);
@@ -167,7 +183,19 @@ export default function WeeklyView() {
     setSelected(null);
   };
 
-  const [createDate, setCreateDate] = useState(null);
+  const isReadOnly = !!localStorage.getItem('targetUserId');
+
+  const handleDragStart = (e, task) => { setDragging(task); e.dataTransfer.effectAllowed = 'move'; };
+  const handleDragOver  = (e, dateStr) => { e.preventDefault(); setDragOver(dateStr); };
+  const handleDrop = async (e, dateStr) => {
+    e.preventDefault(); setDragOver(null);
+    if (!dragging) return;
+    const newDate = dateStr === 'nodate' ? null : dateStr;
+    if (dragging.due_date === newDate) return;
+    await api.tasks.update(dragging.id, { ...dragging, due_date: newDate });
+    setDragging(null); load();
+  };
+  const handleDragEnd = () => { setDragging(null); setDragOver(null); };
 
   const handleSave = async (data) => {
     if (modal === 'create') {
@@ -220,7 +248,9 @@ export default function WeeklyView() {
       </div>
 
       <div style={{ padding: '20px 28px' }}>
+        {/* 위클리 메모 */}
         {currentWeek && <WeeklyNote weekStart={currentWeek.monStr} readOnly={isReadOnly} />}
+
         {loading ? (
           <div style={{ color: 'var(--text3)', padding: '40px 0', textAlign: 'center' }}>로딩 중...</div>
         ) : (
@@ -235,7 +265,14 @@ export default function WeeklyView() {
                 const visibleTasks = extraCount > 0 ? dayTasks.slice(0, 3) : dayTasks;
 
                 return (
-                  <div key={dateStr} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div key={dateStr}
+                    onDragOver={e => handleDragOver(e, dateStr)}
+                    onDrop={e => handleDrop(e, dateStr)}
+                    onDragLeave={() => setDragOver(null)}
+                    style={{ display: 'flex', flexDirection: 'column', gap: '4px', borderRadius: '8px', padding: '4px',
+                      background: dragOver === dateStr ? 'rgba(111,106,248,0.08)' : 'transparent',
+                      border: dragOver === dateStr ? '1px dashed var(--accent)' : '1px solid transparent',
+                      transition: 'all 0.1s' }}>
                     {/* 요일 헤더 - 클릭 시 해당 날짜로 업무 추가 */}
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '6px', cursor: 'pointer' }}
                       onClick={() => { setCreateDate(dateStr); setModal('create'); }}>
@@ -259,12 +296,16 @@ export default function WeeklyView() {
                     {/* 업무 바 */}
                     {visibleTasks.map(task => (
                       <div key={task.id}
+                        draggable={!isReadOnly}
+                        onDragStart={e => handleDragStart(e, task)}
+                        onDragEnd={handleDragEnd}
                         onClick={() => setSelected(selected?.task?.id === task.id ? null : { task, dateStr })}
                         style={{
                           padding: '5px 8px', borderRadius: '5px',
                           background: task.status === 'done' ? 'var(--surface2)' : `${getProjectColor(task)}22`,
                           borderLeft: `3px solid ${task.status === 'done' ? 'var(--border2)' : getProjectColor(task)}`,
-                          cursor: 'pointer', opacity: task.status === 'done' ? 0.5 : 1,
+                          cursor: isReadOnly ? 'pointer' : 'grab',
+                          opacity: task.status === 'done' ? 0.5 : dragging?.id === task.id ? 0.4 : 1,
                           outline: selected?.task?.id === task.id ? `2px solid ${getProjectColor(task)}` : 'none',
                           transition: 'all 0.1s',
                         }}>
@@ -330,14 +371,46 @@ export default function WeeklyView() {
         )}
 
         {/* 마감일 없는 업무 */}
-        {(grouped['nodate'] || []).length > 0 && (
-          <div style={{ marginTop: '16px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '14px 16px' }}>
-            <div style={{ fontSize: '13px', color: 'var(--text3)', marginBottom: '10px' }}>마감일 없는 업무 · {grouped['nodate'].length}건</div>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              {grouped['nodate'].map(task => (
-                <div key={task.id} onClick={() => setSelected(selected?.task?.id === task.id ? null : { task, dateStr: 'nodate' })}
+        <div onDragOver={e => handleDragOver(e, 'nodate')} onDrop={e => handleDrop(e, 'nodate')} onDragLeave={() => setDragOver(null)}
+          style={{ marginTop: '16px', background: dragOver === 'nodate' ? 'rgba(111,106,248,0.05)' : 'var(--surface)',
+            border: dragOver === 'nodate' ? '1px dashed var(--accent)' : '1px solid var(--border)',
+            borderRadius: 'var(--radius)', padding: '14px 16px', transition: 'all 0.1s', minHeight: '60px' }}>
+          <div style={{ fontSize: '13px', color: 'var(--text3)', marginBottom: (grouped['nodate'] || []).length > 0 ? '10px' : '0' }}>
+            마감일 없는 업무 · {(grouped['nodate'] || []).length}건
+            {dragging && <span style={{ color: 'var(--accent)', marginLeft: '8px', fontSize: '11px' }}>여기에 드롭하면 마감일이 제거됩니다</span>}
+          </div>
+          {(grouped['nodate'] || []).length > 0 && (
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {(grouped['nodate'] || []).map(task => (
+              <div key={task.id}
+                draggable={!isReadOnly}
+                onDragStart={e => handleDragStart(e, task)}
+                onDragEnd={handleDragEnd}
+                onClick={() => setSelected(selected?.task?.id === task.id ? null : { task, dateStr: 'nodate' })}
                   style={{ padding: '5px 10px', borderRadius: '5px', background: `${getProjectColor(task)}22`, borderLeft: `3px solid ${getProjectColor(task)}`, cursor: 'pointer', outline: selected?.task?.id === task.id ? `2px solid ${getProjectColor(task)}` : 'none' }}>
                   <div style={{ fontSize: '12px', color: 'var(--text)' }}>{task.title}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 더보기 패널 */}
+        {selected && selected.showAll && selected.tasks && (
+          <div style={{ marginTop: '16px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '18px 20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div style={{ fontSize: '14px', fontWeight: '700' }}>전체 업무 ({selected.tasks.length}건)</div>
+              <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: '18px', cursor: 'pointer' }}>×</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {selected.tasks.map(task => (
+                <div key={task.id} onClick={() => setSelected({ task, dateStr: selected.dateStr })}
+                  style={{ padding: '10px 12px', borderRadius: '8px', cursor: 'pointer',
+                    background: task.status === 'done' ? 'var(--surface2)' : `${getProjectColor(task)}22`,
+                    borderLeft: `3px solid ${task.status === 'done' ? 'var(--border2)' : getProjectColor(task)}`,
+                    opacity: task.status === 'done' ? 0.6 : 1 }}>
+                  <div style={{ fontSize: '13px', color: task.status === 'done' ? 'var(--text3)' : 'var(--text)', textDecoration: task.status === 'done' ? 'line-through' : 'none' }}>{task.title}</div>
+                  {task.project_name && <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>{task.project_name}</div>}
                 </div>
               ))}
             </div>
@@ -368,7 +441,7 @@ export default function WeeklyView() {
                 <select value={selected.task.status} onChange={e => handleStatusChange(selected.task, e.target.value)}
                   style={{ padding: '5px 10px', borderRadius: '20px', border: 'none', background: STATUS_STYLE[selected.task.status]?.bg, color: STATUS_STYLE[selected.task.status]?.color, fontSize: '12px', fontFamily: 'var(--sans)', cursor: 'pointer' }}>
                   <option value="todo">할 일</option>
-                  <option value="active">착수</option>
+                  <option value="in_progress">진행 중</option>
                   <option value="done">완료</option>
                 </select>
                 <button onClick={() => setModal(selected.task)} style={{ background: 'var(--surface2)', border: '1px solid var(--border2)', borderRadius: 'var(--radius-sm)', padding: '5px 12px', color: 'var(--text2)', fontSize: '12px', cursor: 'pointer' }}>수정</button>

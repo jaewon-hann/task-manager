@@ -2,8 +2,76 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import OKRView from './OKRView.jsx';
 
+function getMondayStr() {
+  const d = new Date();
+  const kst = new Date(d.getTime() + 9*60*60*1000);
+  const day = kst.getUTCDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  kst.setUTCDate(kst.getUTCDate() + diff);
+  return kst.toISOString().slice(0,10);
+}
+
+function WeeklyNoteInline() {
+  const weekStart = getMondayStr();
+  const [content, setContent] = React.useState('');
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+  const isReadOnly = !!localStorage.getItem('targetUserId');
+
+  React.useEffect(() => {
+    api.weeklyNotes.get(weekStart).then(d => setContent(d.content || '')).catch(() => {});
+  }, [weekStart]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api.weeklyNotes.save(weekStart, draft);
+      setContent(draft);
+      setEditing(false);
+    } catch(e) {}
+    setSaving(false);
+  };
+
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+      <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: '14px', fontWeight: '700' }}>📝 이번 주 메모</span>
+        {!isReadOnly && !editing && (
+          <button onClick={() => { setDraft(content); setEditing(true); }} style={{ fontSize: '12px', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}>편집</button>
+        )}
+        {editing && (
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={handleSave} disabled={saving} style={{ fontSize: '12px', color: '#fff', background: 'var(--accent)', border: 'none', borderRadius: '6px', padding: '3px 10px', cursor: 'pointer' }}>{saving ? '저장 중...' : '저장'}</button>
+            <button onClick={() => setEditing(false)} style={{ fontSize: '12px', color: 'var(--text2)', background: 'none', border: '1px solid var(--border2)', borderRadius: '6px', padding: '3px 10px', cursor: 'pointer' }}>취소</button>
+          </div>
+        )}
+      </div>
+      <div style={{ padding: '14px 16px', minHeight: '70px' }}>
+        {editing ? (
+          <textarea autoFocus value={draft} onChange={e => setDraft(e.target.value)}
+            placeholder="이번 주 계획, 목표, 메모를 자유롭게 작성하세요..."
+            style={{ width: '100%', minHeight: '70px', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border2)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '13px', resize: 'vertical', lineHeight: '1.7', fontFamily: 'var(--sans)' }} />
+        ) : content ? (
+          <div onClick={() => { if (!isReadOnly) { setDraft(content); setEditing(true); } }}
+            style={{ fontSize: '13px', color: 'var(--text2)', lineHeight: '1.7', whiteSpace: 'pre-wrap', wordBreak: 'break-word', cursor: isReadOnly ? 'default' : 'pointer' }}>
+            {content}
+          </div>
+        ) : (
+          <div onClick={() => { if (!isReadOnly) { setDraft(''); setEditing(true); } }}
+            style={{ fontSize: '13px', color: 'var(--text3)', fontStyle: 'italic', cursor: isReadOnly ? 'default' : 'pointer' }}>
+            {isReadOnly ? '작성된 메모가 없습니다.' : '클릭해서 이번 주 메모를 작성하세요...'}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+
 const PRIORITY_COLOR = { high: '#f06060', medium: '#f7c843', low: '#4ecca3' };
-const STATUS_LABEL   = { todo: '할 일', active: '착수', done: '완료' };
+const STATUS_LABEL   = { todo: '할 일', in_progress: '진행 중', done: '완료' };
 
 function renderMemo(text) {
   if (!text) return null;
@@ -31,7 +99,7 @@ function StatCard({ label, value, color, sub, onClick }) {
 
 function TaskRow({ task }) {
   const [expanded, setExpanded] = useState(false);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = (() => { const d = new Date(); return new Date(d.getTime() + 9*60*60*1000).toISOString().slice(0,10); })();
   const isOverdue = task.due_date && task.due_date < today && task.status !== 'done';
   const isDone = task.status === 'done';
   return (
@@ -51,7 +119,7 @@ function TaskRow({ task }) {
           : task.due_date && <div style={{ fontSize: '11px', color: isOverdue ? 'var(--danger)' : 'var(--text3)', fontFamily: 'var(--mono)', flexShrink: 0 }}>{isOverdue ? '⚠ ' : ''}{task.due_date}</div>
         }
         {!isDone && (
-          <div style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: task.status === 'active' ? 'rgba(111,106,248,0.15)' : 'var(--surface2)', color: task.status === 'active' ? 'var(--accent)' : 'var(--text3)', flexShrink: 0 }}>
+          <div style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', background: task.status === 'in_progress' ? 'rgba(111,106,248,0.15)' : 'var(--surface2)', color: task.status === 'in_progress' ? 'var(--accent)' : 'var(--text3)', flexShrink: 0 }}>
             {STATUS_LABEL[task.status]}
           </div>
         )}
@@ -65,8 +133,122 @@ function TaskRow({ task }) {
   );
 }
 
+// ── 도넛 차트 컴포넌트 ────────────────────────────────────
+function DonutChart({ title, data, total, onNavigate }) {
+  const [hovered, setHovered] = useState(null);
+  const size = 160;
+  const cx = size / 2;
+  const cy = size / 2;
+  const r = 58;
+  const innerR = 36;
+
+  let cumAngle = -Math.PI / 2;
+  const slices = data.map(d => {
+    const angle = total > 0 ? (d.value / total) * 2 * Math.PI : 0;
+    const startAngle = cumAngle;
+    cumAngle += angle;
+    return { ...d, startAngle, endAngle: cumAngle };
+  });
+
+  const polarToXY = (angle, radius) => ({
+    x: cx + radius * Math.cos(angle),
+    y: cy + radius * Math.sin(angle),
+  });
+
+  const slicePath = (s) => {
+    if (s.value === 0) return '';
+    const start = polarToXY(s.startAngle, r);
+    const end   = polarToXY(s.endAngle, r);
+    const iStart = polarToXY(s.startAngle, innerR);
+    const iEnd   = polarToXY(s.endAngle, innerR);
+    const large  = s.endAngle - s.startAngle > Math.PI ? 1 : 0;
+    return `M ${start.x} ${start.y} A ${r} ${r} 0 ${large} 1 ${end.x} ${end.y} L ${iEnd.x} ${iEnd.y} A ${innerR} ${innerR} 0 ${large} 0 ${iStart.x} ${iStart.y} Z`;
+  };
+
+  const hoveredItem = hovered !== null ? data[hovered] : null;
+
+  return (
+    <div style={{ flex: 1, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '16px 20px' }}>
+      <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '12px', color: 'var(--text2)' }}>{title}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        {/* SVG 도넛 */}
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <svg width={size} height={size}>
+            {total === 0 ? (
+              <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--border2)" strokeWidth={r - innerR} />
+            ) : (
+              slices.map((s, i) => (
+                <path key={i} d={slicePath(s)}
+                  fill={s.value === 0 ? 'transparent' : s.color}
+                  opacity={hovered === null || hovered === i ? 1 : 0.4}
+                  style={{ cursor: 'pointer', transition: 'opacity 0.15s' }}
+                  onMouseEnter={() => setHovered(i)}
+                  onMouseLeave={() => setHovered(null)}
+                  onClick={() => onNavigate('tasks', { project_id: String(s.id) })}
+                />
+              ))
+            )}
+          </svg>
+          {/* 중앙 텍스트 */}
+          <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', textAlign: 'center', pointerEvents: 'none' }}>
+            {hoveredItem ? (
+              <>
+                <div style={{ fontSize: '16px', fontWeight: '700', color: hoveredItem.color }}>{hoveredItem.value}</div>
+                <div style={{ fontSize: '9px', color: 'var(--text3)', maxWidth: '60px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{hoveredItem.label}</div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text)' }}>{total}</div>
+                <div style={{ fontSize: '9px', color: 'var(--text3)' }}>전체</div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* 범례 */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0, flex: 1 }}>
+          {data.filter(d => d.value > 0).map((d, i) => (
+            <div key={i} onClick={() => onNavigate('tasks', { project_id: String(d.id) })}
+              style={{ display: 'flex', alignItems: 'center', gap: '7px', cursor: 'pointer', opacity: hovered === null || data.indexOf(d) === hovered ? 1 : 0.4, transition: 'opacity 0.15s' }}
+              onMouseEnter={() => setHovered(data.indexOf(d))}
+              onMouseLeave={() => setHovered(null)}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: d.color, flexShrink: 0 }} />
+              <div style={{ fontSize: '11px', color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{d.label}</div>
+              <div style={{ fontSize: '11px', color: 'var(--text3)', fontFamily: 'var(--mono)', flexShrink: 0 }}>{Math.round(d.value / total * 100)}%</div>
+            </div>
+          ))}
+          {total === 0 && <div style={{ fontSize: '12px', color: 'var(--text3)' }}>업무 없음</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DonutCharts({ projects, onNavigate }) {
+  // 전체 업무 (완료 포함)
+  const totalData = projects.map(p => ({
+    id: p.id, label: p.name, color: p.color || '#6f6af8',
+    value: parseInt(p.total_count) || 0,
+  }));
+  const totalSum = totalData.reduce((s, d) => s + d.value, 0);
+
+  // 진행 중 업무만
+  const inProgressData = projects.map(p => ({
+    id: p.id, label: p.name, color: p.color || '#6f6af8',
+    value: parseInt(p.in_progress_count) || 0,
+  }));
+  const inProgressSum = inProgressData.reduce((s, d) => s + d.value, 0);
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+      <DonutChart title="전체 업무 비중 (완료 포함)" data={totalData} total={totalSum} onNavigate={onNavigate} />
+      <DonutChart title="진행 중 업무 비중" data={inProgressData} total={inProgressSum} onNavigate={onNavigate} />
+    </div>
+  );
+}
+
 export default function Dashboard({ onNavigate }) {
-  const [stats, setStats]         = useState({ total: 0, today: 0, active: 0, overdue: 0 });
+  const [stats, setStats]         = useState({ total: 0, today: 0, in_progress: 0, overdue: 0 });
   const [todayTasks, setTodayTasks] = useState([]);
   const [weekTasks, setWeekTasks]   = useState([]);
   const [projects, setProjects]     = useState([]);
@@ -93,12 +275,13 @@ export default function Dashboard({ onNavigate }) {
 
         {/* 1. 월별 OKR - 맨 위 */}
         <OKRView />
+        <WeeklyNoteInline />
 
         {/* 2. 통계 카드 */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '12px' }}>
-          <StatCard label="착수"      value={stats.total}       color="var(--accent)" sub="active 상태"  onClick={() => onNavigate('tasks', { status: 'active' })} />
+          <StatCard label="전체 업무"    value={stats.total}       color="var(--accent)" sub="진행 중 업무"       onClick={() => onNavigate('tasks')} />
           <StatCard label="오늘 할 일"   value={stats.today}       color="#4ecca3"        sub="오늘 마감"      onClick={() => onNavigate('today')} />
-          <StatCard label="착수"      value={stats.active} color="#f7c843"        sub="작업 중인 업무" onClick={() => onNavigate('tasks', { status: 'active' })} />
+          <StatCard label="이번 주 마감" value={weekTasks.length}   color="#f7c843"        sub="이번 주 업무"   onClick={() => onNavigate('week')} />
           <StatCard label="기한 초과"    value={stats.overdue}     color="var(--danger)"  sub="즉시 처리 필요" onClick={() => onNavigate('tasks', { overdue: true })} />
         </div>
 
@@ -125,29 +308,9 @@ export default function Dashboard({ onNavigate }) {
           </div>
         </div>
 
-        {/* 4. 프로젝트별 현황 - 맨 아래 */}
+        {/* 4. 프로젝트별 비중 - 도넛 차트 */}
         {projects.filter(p => !p.archived).length > 0 && (
-          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '16px 20px' }}>
-            <div style={{ fontSize: '14px', fontWeight: '700', marginBottom: '14px' }}>프로젝트별 현황</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {projects.filter(p => !p.archived).map(p => {
-                const progressPct = p.total_count > 0 ? Math.round((p.active_count / p.total_count) * 100) : 0;
-                return (
-                  <div key={p.id} style={{ cursor: 'pointer' }} onClick={() => onNavigate('tasks', { project_id: String(p.id) })}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', alignItems: 'center' }}>
-                      <span style={{ fontSize: '13px', color: 'var(--text)' }}>{p.name}</span>
-                      <span style={{ fontSize: '11px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>
-                        착수 {p.active_count} / 전체 {p.total_count}건 ({progressPct}%) →
-                      </span>
-                    </div>
-                    <div style={{ height: '5px', background: 'var(--surface2)', borderRadius: '3px' }}>
-                      <div style={{ height: '5px', background: p.color || 'var(--accent)', borderRadius: '3px', width: `${progressPct}%`, minWidth: progressPct > 0 ? '5px' : '0', transition: 'width 0.5s' }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <DonutCharts projects={projects.filter(p => !p.archived)} onNavigate={onNavigate} />
         )}
       </div>
     </div>
