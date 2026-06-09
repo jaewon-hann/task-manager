@@ -358,6 +358,91 @@ app.post('/api/test-mail', authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.stderr?.toString()||e.message }); }
 });
 
+// ── Weekly Notes ───────────────────────────────────────────
+app.get('/api/weekly-notes/:weekStart', authMiddleware, async (req, res) => {
+  try {
+    const userId = getTargetUserId(req);
+    const result = await query('SELECT * FROM weekly_notes WHERE user_id=$1 AND week_start=$2', [userId, req.params.weekStart]);
+    res.json(result.rows[0] || { content: '' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/weekly-notes/:weekStart', authMiddleware, async (req, res) => {
+  try {
+    if (isReadOnly(req)) return res.status(403).json({ error: '다른 팀원의 워크플레이스는 수정할 수 없습니다' });
+    const { content } = req.body;
+    await query(`INSERT INTO weekly_notes (user_id, week_start, content) VALUES ($1,$2,$3) ON CONFLICT (user_id, week_start) DO UPDATE SET content=$3, updated_at=NOW()`,
+      [req.user.id, req.params.weekStart, content || '']);
+    res.json({ message: 'Saved' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Health Check ───────────────────────────────────────────
+app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+
+// ── 주간 리포트 ─────────────────────────────────────────────
+app.post('/api/send-weekly-report', async (req, res) => {
+  const secret = req.headers['x-cron-secret'];
+  if (secret !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
+  res.json({ message: 'started' });
+  (async () => {
+    try {
+      const { buildWeeklyReport, sendWeeklyReportToUser } = require('../scripts/sendWeeklyReport.js');
+      const usersRes = await query('SELECT * FROM users WHERE is_active=true', []);
+      for (const user of usersRes.rows) {
+        try { const html = await buildWeeklyReport(user.id, user.name); await sendWeeklyReportToUser(user, html); }
+        catch(e) { console.error(`❌ ${user.name} 실패:`, e.message); }
+      }
+    } catch(e) { console.error('❌ 주간 리포트 오류:', e.message); }
+  })();
+});
+
+app.post('/api/test-weekly-report', authMiddleware, async (req, res) => {
+  res.json({ message: 'ok' });
+  setImmediate(async () => {
+    try {
+      const { buildWeeklyReport, sendWeeklyReportToUser } = require('../scripts/sendWeeklyReport.js');
+      const userRes = await query('SELECT * FROM users WHERE id=$1', [req.user.id]);
+      const user = userRes.rows[0];
+      const html = await buildWeeklyReport(user.id, user.name);
+      await sendWeeklyReportToUser(user, html);
+      console.log(`✅ 테스트 주간 리포트 발송 완료: ${user.name}`);
+    } catch(e) { console.error('❌ 테스트 주간 리포트 실패:', e.message); }
+  });
+});
+
+// ── 데일리 메일 ─────────────────────────────────────────────
+app.post('/api/send-daily-mail', async (req, res) => {
+  const secret = req.headers['x-cron-secret'];
+  if (secret !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
+  res.json({ message: 'started' });
+  (async () => {
+    try {
+      const { buildTDLContent, sendMailToUser } = require('../scripts/sendDailyTDL.js');
+      const usersRes = await query('SELECT * FROM users WHERE is_active=true', []);
+      for (const user of usersRes.rows) {
+        try { const html = await buildTDLContent(user.id, user.name); await sendMailToUser(user, html); }
+        catch(e) { console.error(`❌ ${user.name} 실패:`, e.message); }
+      }
+    } catch(e) { console.error('❌ 메일 발송 오류:', e.message); }
+  })();
+});
+
+app.post('/api/test-mail', authMiddleware, async (req, res) => {
+  console.log('📧 테스트 메일 요청 받음:', req.user.name);
+  res.json({ message: 'ok' });
+  setImmediate(async () => {
+    try {
+      const { buildTDLContent, sendMailToUser } = require('../scripts/sendDailyTDL.js');
+      const userRes = await query('SELECT * FROM users WHERE id=$1', [req.user.id]);
+      const user = userRes.rows[0];
+      const html = await buildTDLContent(user.id, user.name);
+      await sendMailToUser(user, html);
+      console.log(`✅ 테스트 메일 발송 완료: ${user.name}`);
+    } catch(e) { console.error('❌ 테스트 메일 실패:', e.message); console.error(e.stack); }
+  });
+});
+
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../client/dist/index.html'));
 });
