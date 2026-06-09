@@ -36,7 +36,8 @@ export default function TaskList({ filter = 'all', params = {} }) {
   const [loading, setLoading]   = useState(true);
   const [modal, setModal]       = useState(null);
   const [expanded, setExpanded] = useState({});
-  const [period, setPeriod]     = useState('1'); // 기본 1개월
+  const [period, setPeriod]         = useState('1'); // 기본 1개월
+  const [excludeDone, setExcludeDone] = useState(false);
   const [filters, setFilters]   = useState({
     project_id: params.project_id || '',
     priority:   '',
@@ -156,17 +157,12 @@ export default function TaskList({ filter = 'all', params = {} }) {
           <select value={filters.project_id} onChange={e => setFilters(f => ({ ...f, project_id: e.target.value }))}
             style={{ padding: '7px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border2)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '13px' }}>
             <option value="">전체 프로젝트</option>
-            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {projects.map(p => <option key={p.id} value={p.id}>{p.name}{p.archived ? ' (완료됨)' : ''}</option>)}
           </select>
-          {filter === 'all' && (
-            <select value={filters.priority} onChange={e => setFilters(f => ({ ...f, priority: e.target.value }))}
-              style={{ padding: '7px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border2)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '13px' }}>
-              <option value="">전체 우선순위</option>
-              <option value="high">높음</option>
-              <option value="medium">중간</option>
-              <option value="low">낮음</option>
-            </select>
-          )}
+          <button onClick={() => setExcludeDone(v => !v)}
+            style={{ padding: '7px 14px', borderRadius: '20px', border: `1px solid ${excludeDone ? 'var(--accent)' : 'var(--border2)'}`, background: excludeDone ? 'rgba(111,106,248,0.15)' : 'transparent', color: excludeDone ? 'var(--accent)' : 'var(--text3)', fontSize: '12px', cursor: 'pointer', fontWeight: excludeDone ? '700' : '400', transition: 'all 0.15s' }}>
+            {excludeDone ? '✓ 완료 업무 제외 중' : '완료 업무 제외'}
+          </button>
           {showPeriodFilter && (
             <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto' }}>
               {PERIOD_OPTIONS.map(o => (
