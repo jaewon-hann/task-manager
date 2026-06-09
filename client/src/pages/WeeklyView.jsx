@@ -39,8 +39,60 @@ function renderMemo(text) {
   );
 }
 
+
+function WeeklyNote({ weekStart, readOnly }) {
+  const [content, setContent] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setContent('');
+    api.weeklyNotes.get(weekStart).then(d => setContent(d.content || '')).catch(() => {});
+  }, [weekStart]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try { await api.weeklyNotes.save(weekStart, draft); setContent(draft); setEditing(false); } catch(e) {}
+    setSaving(false);
+  };
+
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+        <div style={{ fontSize: '14px', fontWeight: '700' }}>📝 이번 주 메모</div>
+        {!readOnly && !editing && (
+          <button onClick={() => { setDraft(content); setEditing(true); }} style={{ padding: '4px 12px', borderRadius: '6px', fontSize: '12px', background: 'var(--surface2)', border: '1px solid var(--border2)', color: 'var(--text2)', cursor: 'pointer' }}>편집</button>
+        )}
+        {editing && (
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={handleSave} disabled={saving} style={{ padding: '4px 12px', borderRadius: '6px', fontSize: '12px', background: 'var(--accent)', border: 'none', color: '#fff', cursor: 'pointer' }}>{saving ? '저장 중...' : '저장'}</button>
+            <button onClick={() => setEditing(false)} style={{ padding: '4px 12px', borderRadius: '6px', fontSize: '12px', background: 'transparent', border: '1px solid var(--border2)', color: 'var(--text2)', cursor: 'pointer' }}>취소</button>
+          </div>
+        )}
+      </div>
+      {editing ? (
+        <textarea autoFocus value={draft} onChange={e => setDraft(e.target.value)}
+          placeholder="이번 주 계획, 목표, 메모를 자유롭게 작성하세요..."
+          style={{ width: '100%', minHeight: '100px', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border2)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '13px', resize: 'vertical', lineHeight: '1.7', fontFamily: 'var(--sans)' }} />
+      ) : content ? (
+        <div onClick={() => { if (!readOnly) { setDraft(content); setEditing(true); } }}
+          style={{ fontSize: '13px', color: 'var(--text2)', lineHeight: '1.7', whiteSpace: 'pre-wrap', wordBreak: 'break-word', cursor: readOnly ? 'default' : 'pointer', minHeight: '40px' }}>
+          {content}
+        </div>
+      ) : (
+        <div onClick={() => { if (!readOnly) { setDraft(''); setEditing(true); } }}
+          style={{ fontSize: '13px', color: 'var(--text3)', cursor: readOnly ? 'default' : 'pointer', minHeight: '40px', fontStyle: 'italic' }}>
+          {readOnly ? '작성된 메모가 없습니다.' : '클릭해서 이번 주 메모를 작성하세요...'}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function WeeklyView() {
   const [weekOffset, setWeekOffset] = useState(0);
+  const isReadOnly = !!localStorage.getItem('targetUserId');
   const [tasks, setTasks]           = useState([]);
   const [events, setEvents]         = useState([]);
   const [projects, setProjects]     = useState([]);
@@ -177,6 +229,7 @@ export default function WeeklyView() {
       </div>
 
       <div style={{ padding: '20px 28px' }}>
+        {currentWeek && <WeeklyNote weekStart={currentWeek.monStr} readOnly={isReadOnly} />}
         {loading ? (
           <div style={{ color: 'var(--text3)', padding: '40px 0', textAlign: 'center' }}>로딩 중...</div>
         ) : (
