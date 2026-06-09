@@ -14,12 +14,13 @@ const STATUS_STYLE = {
 const DAY_LABEL = ['월', '화', '수', '목', '금', '토', '일'];
 
 function getMondayOf(date) {
-  const d = new Date(date);
-  const day = d.getDay();
+  // KST 기준으로 월요일 계산
+  const kst = new Date(new Date(date).getTime() + 9*60*60*1000);
+  const day = kst.getUTCDay();
   const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  d.setHours(0, 0, 0, 0);
-  return d;
+  kst.setUTCDate(kst.getUTCDate() + diff);
+  kst.setUTCHours(0, 0, 0, 0);
+  return kst;
 }
 
 function getWeekLabel(monday) {
